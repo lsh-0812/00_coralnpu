@@ -22,6 +22,7 @@ class PredecodeOutput(p: Parameters) extends Bundle {
     val insts = Vec(p.fetchInstrSlots, new FetchInstruction(p))
     val count = UInt(4.W)
     val nextPc = UInt(p.instructionBits.W)
+    val hasJumped = Bool()
 }
 
 class FetchResponse(p: Parameters) extends Bundle {
@@ -42,6 +43,7 @@ class Instruction(p: Parameters) extends Bundle {
 class Fetcher(p: Parameters) extends Module {
   val io = IO(new Bundle {
     val ctrl = Flipped(Irrevocable(UInt(p.fetchAddrBits.W)))
+    val flushTx = Input(Bool())
     val fetch = Output(Valid(new FetchResponse(p)))
     val ibus = new IBusIO(p)
   })
@@ -49,40 +51,63 @@ class Fetcher(p: Parameters) extends Module {
   val lsb = log2Ceil(p.fetchDataBits / 8)
   assert((p.fetchDataBits == 128 && lsb == 4) || (p.fetchDataBits == 256 && lsb == 5))
 
-  // The fetch request goes through without stopping.
-  io.ibus.valid := io.ctrl.valid
-  io.ibus.addr := Cat(io.ctrl.bits(p.fetchAddrBits - 1, lsb), 0.U(lsb.W))
+  val txidAllocator = Module(new IndexAllocatorShifting(2))
 
-  // The ibus can have pipeline and we need to bookkeep:
-  // - The address of each transaction
-  // - Fault of each transaction, currently combinatorial from the address
-  val ibusAddrFire = io.ibus.fire
-  // TODO(davidgao): decouple the data path of ibus
-  val ibusDataFire = RegNext(ibusAddrFire, false.B)
   // TODO(davidgao): parameterize the depth of this bookkeeping queue
   val firedReads = Module(new Queue(new Bundle {
     val addr = UInt(p.fetchAddrBits.W)
     val fault = Bool()
+    val txid = UInt(2.W)
   }, 1, pipe=true))
+
+  val canStartFetch = io.ctrl.valid && firedReads.io.enq.ready && txidAllocator.io.alloc.valid
+  // The fetch request goes through without stopping.
+  io.ibus.valid := canStartFetch
+  io.ibus.addr := Cat(io.ctrl.bits(p.fetchAddrBits - 1, lsb), 0.U(lsb.W))
+
+  val ibusAddrFire = io.ibus.fire
+  // TODO(davidgao): Add txid to ibus interface
+  // io.ibus.txid := txidAllocator.io.alloc.bits
+  txidAllocator.io.alloc.ready := ibusAddrFire
+
+  // The ibus can have pipeline and we need to bookkeep:
+  // - The address of each transaction
+  // - Fault of each transaction, currently combinatorial from the address
+  // - Transaction ID
+  // A temporary adapter between our fixed-latency ibus and the fetcher.
+  // An additional delay cycle breaks the rdata->addr loop.
+  // TODO(davidgao): upgrade ibus and move the delay upstream.
+  val ibusDataFire = RegNext(RegNext(ibusAddrFire, false.B), false.B)
+  val ignoreResp = RegNext(io.flushTx)
+  val rData = RegNext(io.ibus.rdata)
+  val txidCompleted = RegNext(RegNext(txidAllocator.io.alloc.bits))
   firedReads.io.enq.valid := ibusAddrFire
   firedReads.io.enq.bits.addr := io.ctrl.bits
   firedReads.io.enq.bits.fault := io.ibus.fault.valid
+  firedReads.io.enq.bits.txid := txidAllocator.io.alloc.bits
+  // IBus is still in-order atm so this temporary bookkeeper doesn't need to reorder.
+  when (ibusDataFire) {
+    assert(firedReads.io.deq.valid)
+    assert(txidCompleted === firedReads.io.deq.bits.txid)
+  }
   firedReads.io.deq.ready := ibusDataFire
-  io.ctrl.ready := firedReads.io.enq.ready
+  io.ctrl.ready := ibusAddrFire
 
-  // Buffer the fetched data to avoid itcm data->addr loop.
-  // TODO(davidgao): once ibus is pipelined, remove this buffer.
-  val resultReg = RegNext(MakeValid(
-      firedReads.io.deq.fire,
+  txidAllocator.io.free.valid := ibusDataFire
+  txidAllocator.io.free.bits := txidCompleted
+
+  val result = MakeValid(
+      ibusDataFire && !ignoreResp,
       MakeWireBundle[FetchResponse](
           new FetchResponse(p),
           _.addr -> firedReads.io.deq.bits.addr,
-          _.inst -> UIntToVec(io.ibus.rdata, p.instructionBits),
+          // RegNext's width is unset
+          _.inst -> UIntToVec(rData(p.fetchDataBits - 1, 0), p.instructionBits),
           _.fault -> firedReads.io.deq.bits.fault,
       )
-  ))
+  )
 
-  io.fetch := resultReg
+  io.fetch := result
 }
 
 class FetchControl(p: Parameters) extends Module {
@@ -95,6 +120,7 @@ class FetchControl(p: Parameters) extends Module {
         val linkPort = Flipped(new RegfileLinkPortIO)
 
         val fetchAddr = Irrevocable(UInt(p.fetchAddrBits.W))
+        val flushTx = Output(Bool())
         val bufferRequest = DecoupledVectorIO(new FetchInstruction(p), p.fetchInstrSlots)
         val bufferSpaces = Input(UInt(log2Ceil(p.fetchInstrSlots * 2 + 1).W))
     })
@@ -160,6 +186,7 @@ class FetchControl(p: Parameters) extends Module {
           ),
           _.count -> validsOut.count(x => x),
           _.nextPc -> nextFetchPc,
+          _.hasJumped -> jumped.reduce(_||_),
       )
 
       result
@@ -227,6 +254,7 @@ class FetchControl(p: Parameters) extends Module {
     pastBranchOrFlush := ongoingBranchOrFlush && !newFetchInitiated
 
     io.fetchAddr <> MakeIrrevocable(fetch)
+    io.flushTx := ongoingBranchOrFlush || (writeToBuffer && predecode.hasJumped)
 }
 
 class UncachedFetch(p: Parameters) extends FetchUnit(p) {
@@ -252,6 +280,7 @@ class UncachedFetch(p: Parameters) extends FetchUnit(p) {
 
   val fetcher = Module(new Fetcher(p))
   fetcher.io.ctrl <> ctrl.io.fetchAddr
+  fetcher.io.flushTx := ctrl.io.flushTx
   ctrl.io.fetchData := fetcher.io.fetch
   fetcher.io.ibus <> io.ibus
 
