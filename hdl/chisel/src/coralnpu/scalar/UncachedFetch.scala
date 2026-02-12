@@ -456,8 +456,6 @@ class FetchControl(p: Parameters) extends Module {
         // transaction last cycle. This could be a delay in results or a block
         // on our side. EAGAIN.
     ))
-    // PC will always be valid as soon as we leave reset.
-    pc := MakeValid(pcNext)
 
     // Buffer space for the fetched instructions are guaranteed upon initiation
     // of the transaction. We can only start a new fetch if there is sufficient
@@ -472,6 +470,16 @@ class FetchControl(p: Parameters) extends Module {
                         ongoingFetch.valid ||
                         waitForResult ||
                         fetchFaultValid
+
+    val pcFetched = RegInit(false.B)
+    pcFetched := MuxCase(pcFetched, Seq(
+        (!pc.valid) -> !blockNewFetch,  // We're leaving reset.
+        (io.iflush.valid || io.branch.valid) -> false.B,
+        writeToBuffer -> !blockNewFetch,
+    ))
+    // PC will always be valid as soon as we leave reset.
+    pc := MakeValid(pcNext)
+
     val fetch = MuxUpTo1H(MakeInvalid(UInt(p.fetchAddrBits.W)), Seq(
         ongoingFetch.valid -> ongoingFetch,
         !blockNewFetch -> MakeValid(pcNext),
