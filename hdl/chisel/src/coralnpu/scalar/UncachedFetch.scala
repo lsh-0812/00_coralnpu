@@ -36,6 +36,242 @@ class Instruction(p: Parameters) extends Bundle {
     val inst = UInt(p.instructionBits.W)
 }
 
+class FetchReorderBuffer(txidBits: Int, addrBits: Int, dataBits: Int, capacity: Int, flowResponse: Boolean = false) extends Module {
+  val ctrWidth = log2Ceil(capacity + 1)
+  val indexWidth = log2Ceil(capacity)
+
+  // Structures
+
+  class Response extends Bundle {
+    val data = UInt(dataBits.W)
+    val fault = Bool()
+  }
+
+  class NewTx extends Bundle {
+    val txid = UInt(txidBits.W)
+    val addr = UInt(addrBits.W)
+  }
+
+  // This comes from the bus
+  class ResponseWithTxid extends Bundle {
+    val txid = UInt(txidBits.W)
+    val resp = new Response()
+  }
+
+  // This is just FetchResponse before instructions are separated.
+  // I don't want the reorder buffer to understand the idea of instructions.
+  class ResponseWithAddr extends Bundle {
+    val addr = UInt(addrBits.W)
+    val resp = new Response()
+  }
+
+  class Entry extends Bundle {
+    val txid = UInt(txidBits.W)
+    val addr = UInt(addrBits.W)
+    val resp = Valid(new Response())
+
+    def asResponse: ResponseWithAddr = MakeWireBundle[ResponseWithAddr](
+        new ResponseWithAddr,
+        _.addr -> addr,
+        _.resp -> resp.bits,
+    )
+  }
+  object Entry {
+    def apply(): Entry = MakeWireBundle[Entry](
+      new Entry,
+      _.txid -> 0.U,
+      _.addr -> 0.U,
+      _.resp -> MakeInvalid(new Response),
+    )
+  }
+
+  // IO
+
+  val io = IO(new Bundle {
+    val newTx = Flipped(Decoupled(new NewTx()))
+    // We always consume the resp. It is discarded if nothing matches.
+    val busResp = Flipped(Valid(new ResponseWithTxid()))
+    val commit = Decoupled(new ResponseWithAddr())
+    // Allocator should always have space for what it allocated.
+    val freeTxid = Valid(UInt(txidBits.W))
+    val flush = Input(Bool())
+  })
+
+  class State extends Bundle {
+    val queue = Vec(capacity, new Entry)
+    val nElem = UInt(ctrWidth.W)
+    val nCancelled = UInt(ctrWidth.W)
+
+    def valids = VecInit.tabulate(capacity) (_.U < nElem)
+
+    def trimPrecondition = {
+      val noOverflow = nElem <= capacity.U
+      val nCancelledReasonable = nCancelled <= nElem
+      val noDuplicateTxid = !VecInit.tabulate(capacity, capacity) { (i, j) =>
+        (i != j).B && state.valids(i) && state.valids(j) && state.queue(i).txid === state.queue(j).txid
+      }.exists(x => x.exists(y => y))
+
+      noOverflow && nCancelledReasonable && noDuplicateTxid
+    }
+
+    def commonPrecondition = {
+      val dontNeedTrim = nCancelled === 0.U || queue(0).resp.valid
+
+      trimPrecondition && dontNeedTrim
+    }
+
+    def trySaveResponse(busResp: ResponseWithTxid): (State, Bool) = {
+      val founds = VecInit.tabulate(capacity) {i =>
+        valids(i) && (busResp.txid === queue(i).txid)
+      }
+      // Resp cannot match two tx.
+      val duplicateTxid = founds.count(x => x) > 1.U
+      // Tx cannot get two resp.
+      val badResponse = VecInit.tabulate(capacity) {i =>
+        founds(i) && queue(i).resp.valid
+      }.exists(x => x)
+      val precondition = commonPrecondition && !duplicateTxid && !badResponse
+
+      val accepted = Mux(precondition, founds.exists(x => x), WireDefault(Bool(), DontCare))
+      val result = Mux(precondition, Mux(accepted, MakeWireBundle[State](
+          new State,
+          _ -> this,
+          _.queue(founds.indexWhere(x => x)).resp -> MakeValid(busResp.resp),
+      ), this), State.unreachable())
+
+      (result, accepted)
+    }
+
+    def enq(tx: NewTx): State = {
+      val precondition = commonPrecondition && nElem < capacity.U
+
+      val index = nElem(indexWidth - 1, 0)
+      Mux(precondition, MakeWireBundle[State](
+          new State,
+          _ -> this,
+          _.queue(index).txid -> tx.txid,
+          _.queue(index).addr -> tx.addr,
+          _.queue(index).resp.valid -> false.B,
+          // _.queue(index).resp.bits is untouched
+          _.nElem -> (nElem + 1.U),
+      ), State.unreachable())
+    }
+
+    def deq(): State = {
+      val precondition = commonPrecondition && nElem > 0.U
+
+      Mux(precondition, MakeWireBundle[State](
+          new State,
+          _ -> this,
+          _.queue -> VecInit.tabulate(capacity) {i =>
+            if (i + 1 < capacity)
+              Mux((i + 1).U < nElem, queue(i + 1), queue(i))
+            else queue(i)
+          },
+          _.nElem -> (nElem - 1.U),
+          _.nCancelled -> Mux(nCancelled > 0.U, nCancelled - 1.U, 0.U),
+      ), State.unreachable())
+    }
+
+    def flush(): State = {
+      Mux(commonPrecondition, MakeWireBundle[State](
+          new State,
+          _ -> this,
+          _.nCancelled -> nElem,
+      ), State.unreachable())
+    }
+
+    def maybeTrim(): State = {
+      // From the front, discard all cancelled entries without resp
+      val keepCancelled = VecInit.tabulate(capacity) {i =>
+        (i.U < nCancelled) && queue(i).resp.valid
+      }
+      val hasKeep = keepCancelled.exists(x => x)
+      val offset = Mux(hasKeep, keepCancelled.indexWhere(x => x), nCancelled)
+
+      // Note it's not commonPrecondition here
+      Mux(trimPrecondition, MakeWireBundle[State](
+          new State,
+          _ -> this,
+          _.queue -> VecInit.tabulate(capacity) {i =>
+            Mux(i.U < nElem - offset, queue(i.U + offset(indexWidth - 1, 0)), queue(i))
+          },
+          _.nElem -> (nElem - offset),
+          _.nCancelled -> (nCancelled - offset),
+      ), State.unreachable())
+    }
+  }
+  object State {
+    def apply() = MakeWireBundle[State](
+        new State,
+        _.queue -> VecInit.fill(capacity)(Entry()),
+        _.nElem -> 0.U,
+        _.nCancelled -> 0.U,
+    )
+
+    def unreachable() = MakeWireBundle[State](
+        new State,
+        _.queue -> DontCare,
+        _.nElem -> DontCare,
+        _.nCancelled -> DontCare,
+    )
+  }
+
+  val state = RegInit(State())
+
+  // Stage 1, decide what to do with the bus response
+  val badResponse = io.busResp.valid && VecInit.tabulate(capacity) {i =>
+    state.valids(i) && state.queue(i).resp.valid && state.queue(i).txid === io.busResp.bits.txid
+  }.exists(x => x)
+  val s1Precondition = state.commonPrecondition && !badResponse
+  assert(s1Precondition)
+  val (stateAfterResp, respFound) = state.trySaveResponse(io.busResp.bits)
+  // BusResp takes priority here because s1Reject cannot depend on io.flush.
+  val s1Reject = io.busResp.valid && !respFound
+  val s1State = Mux(s1Precondition, Mux(io.busResp.valid, stateAfterResp, state), State.unreachable())
+
+  // Stage 2, commit a response if we can
+  val s2Src = if (flowResponse) s1State else state
+  // Prevent io.commit.valid from depending on io.commit.valid
+  val s2Valid = !s1Reject && s2Src.valids(0) && s2Src.nCancelled === 0.U && s2Src.queue(0).resp.valid
+  val s2Commit = io.commit.fire
+  val s2Precondition = s2Src.commonPrecondition && (!s2Commit || s2Valid)
+  assert(s2Precondition)
+  val s2State = Mux(s2Precondition, Mux(s2Commit, s1State.deq(), s1State), State.unreachable())
+
+  // Stage 3, handle flushing
+  val s3Precondition = s2State.commonPrecondition
+  assert(s3Precondition)
+  val s3State = Mux(s3Precondition, Mux(io.flush, s2State.flush().maybeTrim(), s2State), State.unreachable())
+
+  // Stage 4, discard a response if we can
+  val s4Discard = !s1Reject && !s2Commit && s3State.valids(0) && s3State.nCancelled > 0.U
+  val s4Precondition = s3State.commonPrecondition && (!s4Discard || s3State.queue(0).resp.valid)
+  assert(s4Precondition)
+  val s4State = Mux(s4Precondition, Mux(s4Discard, s3State.deq().maybeTrim(), s3State), State.unreachable())
+
+  // Stage 5, handle new transaction
+  val s5Ready = !s4State.valids(capacity - 1)
+  val s5Fire = io.newTx.fire
+  val s5Precondition = s4State.commonPrecondition && (!s5Fire || s5Ready)
+  assert(s5Precondition)
+  val s5State = Mux(s5Precondition, Mux(s5Fire, s4State.enq(io.newTx.bits), s4State), State.unreachable())
+
+  assert(s5State.commonPrecondition)
+  state := s5State
+
+  io.newTx.ready := s5Ready
+  io.commit.valid := s2Valid
+  io.commit.bits := s2Src.queue(0).asResponse
+  val freeTxidUsage = VecInit(Seq(s1Reject, s2Commit, s4Discard)).count(x => x)
+  assert(freeTxidUsage <= 1.U)
+  io.freeTxid := MuxUpTo1H(MakeInvalid(0.U(txidBits.W)), Seq(
+      s1Reject -> MakeValid(io.busResp.bits.txid),
+      s2Commit -> MakeValid(s2Src.queue(0).txid),
+      s4Discard -> MakeValid(s3State.queue(0).txid),
+  ))
+}
+
 // TODO(atv): Privatize this and FetchControl
 // Module which is responsible for performing
 // memory fetches which are requested by

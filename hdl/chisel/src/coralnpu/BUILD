@@ -215,7 +215,7 @@ chisel_test(
 
 chisel_test(
     name = "coralnpu_uncached_fetch_tests",
-    size = "medium",
+    size = "large",
     srcs = [
         "scalar/UncachedFetchTest.scala",
     ],
