@@ -17,6 +17,21 @@ from coralnpu_test_utils.sim_test_fixture import Fixture
 from bazel_tools.tools.python.runfiles import runfiles
 
 
+def log_matmul_metrics(dut, test_name: str, cycles: int, lhs_rows: int,
+                       rhs_cols: int, inner: int):
+    """Calculate and log MAC metrics for a matrix multiplication."""
+    total_macs = lhs_rows * rhs_cols * inner
+    cycles_per_mac = cycles / total_macs
+    banner = (f"\n{'='*60}\n"
+              f" PERFORMANCE METRICS: {test_name}\n"
+              f"{'-'*60}\n"
+              f"  Total Cycles   : {cycles:,}\n"
+              f"  Total MACs     : {total_macs:,}\n"
+              f"  Cycles / MAC   : {cycles_per_mac:.2f}\n"
+              f"{'='*60}")
+    dut._log.info(banner)
+
+
 @cocotb.test()
 async def core_mini_rvv_matmul_c_test(dut):
     """Test integer matmul with RVV C intrinsics.
@@ -53,10 +68,11 @@ async def core_mini_rvv_matmul_c_test(dut):
     await fixture.write('lhs_input', lhs_data.flatten())
     await fixture.write('rhs_input', rhs_data.transpose().flatten())
     cycles = await fixture.run_to_halt(timeout_cycles=1000000)
-    dut._log.info(f"Cycle count: {cycles}")
+    log_matmul_metrics(dut, "core_mini_rvv_matmul_c_test", cycles, LHS_ROWS,
+                       RHS_COLS, INNER)
     output_matmul_result = (await fixture.read(
-        'result_output', LHS_ROWS * RHS_COLS *
-        4)).view(dtype=np.int32).reshape([LHS_ROWS, RHS_COLS])
+        'result_output', LHS_ROWS * RHS_COLS * 4)).view(dtype=np.int32).reshape(
+            [LHS_ROWS, RHS_COLS])
 
     assert ((result_data == output_matmul_result).all())
 
@@ -97,10 +113,11 @@ async def core_mini_rvv_matmul_asm_test(dut):
     await fixture.write('lhs_input', lhs_data.flatten())
     await fixture.write('rhs_input', rhs_data.transpose().flatten())
     cycles = await fixture.run_to_halt(timeout_cycles=1000000)
-    dut._log.info(f"Cycle count: {cycles}")
+    log_matmul_metrics(dut, "core_mini_rvv_matmul_asm_test", cycles, LHS_ROWS,
+                       RHS_COLS, INNER)
     output_matmul_result = (await fixture.read(
-        'result_output', LHS_ROWS * RHS_COLS *
-        4)).view(dtype=np.int32).reshape([LHS_ROWS, RHS_COLS])
+        'result_output', LHS_ROWS * RHS_COLS * 4)).view(dtype=np.int32).reshape(
+            [LHS_ROWS, RHS_COLS])
 
     assert ((result_data == output_matmul_result).all())
 
@@ -136,7 +153,14 @@ async def core_mini_rvv_float_matmul_c_test(dut):
     await fixture.write('lhs_input', lhs_data.flatten())
     await fixture.write('rhs_input', rhs_data.transpose().flatten())
     cycles = await fixture.run_to_halt(timeout_cycles=1000000)
-    dut._log.info(f"Cycle count: {cycles}")
+    log_matmul_metrics(
+        dut,
+        "core_mini_rvv_float_matmul_c_test",
+        cycles,
+        LHS_ROWS,
+        RHS_COLS,
+        INNER,
+    )
     output_matmul_result = (await fixture.read(
         'result_output', LHS_ROWS * RHS_COLS * 4)).view(dtype=np_type).reshape(
             [LHS_ROWS, RHS_COLS])
@@ -178,7 +202,14 @@ async def core_mini_rvv_float_matmul_asm_test(dut):
     await fixture.write('lhs_input', lhs_data.flatten())
     await fixture.write('rhs_input', rhs_data.transpose().flatten())
     cycles = await fixture.run_to_halt(timeout_cycles=1000000)
-    dut._log.info(f"Cycle count: {cycles}")
+    log_matmul_metrics(
+        dut,
+        "core_mini_rvv_float_matmul_asm_test",
+        cycles,
+        LHS_ROWS,
+        RHS_COLS,
+        INNER,
+    )
     output_matmul_result = (await fixture.read(
         'result_output', LHS_ROWS * RHS_COLS * 4)).view(dtype=np_type).reshape(
             [LHS_ROWS, RHS_COLS])
@@ -220,7 +251,14 @@ async def core_mini_rvv_float_matmul_optimized_c_test(dut):
     await fixture.write('lhs_input', lhs_data.flatten())
     await fixture.write('rhs_input', rhs_data.transpose().flatten())
     cycles = await fixture.run_to_halt(timeout_cycles=1000000)
-    dut._log.info(f"Cycle count: {cycles}")
+    log_matmul_metrics(
+        dut,
+        "core_mini_rvv_float_matmul_optimized_c_test",
+        cycles,
+        LHS_ROWS,
+        RHS_COLS,
+        INNER,
+    )
     output_matmul_result = (await fixture.read(
         'result_output', LHS_ROWS * RHS_COLS * 4)).view(dtype=np_type).reshape(
             [LHS_ROWS, RHS_COLS])
