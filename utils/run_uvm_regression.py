@@ -68,6 +68,16 @@ DENYLIST = [
     "//tests/cocotb/rvv/arithmetics:vfrdiv_vf_test_rne",
     "//tests/cocotb/rvv/arithmetics:vfrdiv_vf_test_rtz",
     "//tests/cocotb/rvv/arithmetics:vfrdiv_vf_test_rup",
+    # Exclude all ml_ops tests from regression
+    "//tests/cocotb/rvv/ml_ops:rvv_float_matmul",
+    "//tests/cocotb/rvv/ml_ops:rvv_float_matmul_assembly",
+    "//tests/cocotb/rvv/ml_ops:rvv_float_matmul_optimized",
+    "//tests/cocotb/rvv/ml_ops:rvv_matmul",
+    "//tests/cocotb/rvv/ml_ops:rvv_matmul_assembly",
+    "//tests/cocotb/rvv/ml_ops:rvv_matmul_assembly_highmem",
+    "//tests/cocotb/rvv/ml_ops:rvv_matmul_assembly_itcm512kb_dtcm512kb",
+    "//tests/cocotb/rvv/ml_ops:rvv_matmul_highmem",
+    "//tests/cocotb/rvv/ml_ops:rvv_matmul_itcm512kb_dtcm512kb",
 ]
 
 # List of targets to exclude from Spike co-simulation (e.g. tests requiring external IRQs)

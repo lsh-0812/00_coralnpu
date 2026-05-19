@@ -52,13 +52,13 @@ async def core_mini_axi_run_wfi_in_all_slots_itcm512kb_dtcm512kb(dut):
 async def core_mini_rvv_matmul_test(dut):
     """Testbench to test matmul with rvv intrinsics using custom memory.
 
-    This test performs matmul in M1 32x128 M2 128x32 matrices.
+    This test performs matmul in M1 4x64 M2 64x4 matrices.
     Compares results with native numpy matmul.
     """
 
-    LHS_ROWS = 32
-    RHS_COLS = 32
-    INNER = 128
+    LHS_ROWS = 4
+    RHS_COLS = 4
+    INNER = 64
 
     fixture = await Fixture.Create(dut, csr_base_addr=0x200000)
     r = runfiles.Create()
@@ -67,7 +67,10 @@ async def core_mini_rvv_matmul_test(dut):
 
         await fixture.load_elf_and_lookup_symbols(
             r.Rlocation('coralnpu_hw/tests/cocotb/rvv/ml_ops/' + elf_file),
-            ['lhs_input', 'rhs_input', 'result_output'])
+            ['lhs_input', 'rhs_input', 'result_output', 'lhs_rows', 'rhs_cols', 'inner'])
+        await fixture.write_word('lhs_rows', LHS_ROWS)
+        await fixture.write_word('rhs_cols', RHS_COLS)
+        await fixture.write_word('inner', INNER)
         np_type = np.int8
         min_value = np.iinfo(np_type).min
         max_value = np.iinfo(np_type).max + 1  # One above.

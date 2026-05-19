@@ -1,24 +1,23 @@
+// Copyright 2026 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <riscv_vector.h>
 #include <stdint.h>
 
-constexpr size_t kLhsRows = 32;
-constexpr size_t kRhsCols = 32;
-constexpr size_t kInner = 128;
-
-// mcontext0 val used in test for power period extraction
-// mcontext0 is io_coralnpu_csr_value_8 in waveform
-uint32_t mcontext0_write_value;
-
-int8_t lhs_input[kLhsRows * kInner] __attribute__((section(".data")))
-__attribute__((aligned(16)));
-int8_t rhs_input[kInner * kRhsCols] __attribute__((section(".data")))
-__attribute__((aligned(16)));
-int32_t result_output[kLhsRows * kRhsCols] __attribute__((section(".data")))
-__attribute__((aligned(16)));
-
 // Assume rhs is column major.
-void MatMul(size_t lhs_rows, size_t inner, size_t rhs_cols, const int8_t* lhs,
-            const int8_t* rhs, int32_t* result) {
+extern "C" void MatMul(size_t lhs_rows, size_t inner, size_t rhs_cols, const int8_t* lhs,
+                       const int8_t* rhs, int32_t* result) {
   size_t vlmax = __riscv_vsetvl_e8m2(inner);
 
   for (size_t r = 0; r < lhs_rows; r++) {
@@ -49,13 +48,4 @@ void MatMul(size_t lhs_rows, size_t inner, size_t rhs_cols, const int8_t* lhs,
       __riscv_vse32_v_i32m1(result_row + c, vres, 1);
     }
   }
-}
-
-int main() {
-  mcontext0_write_value = 0x01;
-  asm volatile("csrw 0x7C0, %0" : : "r"(mcontext0_write_value));
-  MatMul(kLhsRows, kInner, kRhsCols, lhs_input, rhs_input, result_output);
-  mcontext0_write_value = 0x00;
-  asm volatile("csrw 0x7C0, %0" : : "r"(mcontext0_write_value));
-  return 0;
 }

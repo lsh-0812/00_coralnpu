@@ -13,26 +13,11 @@
 // limitations under the License.
 
 #include <riscv_vector.h>
-
 #include <cstdint>
 
-constexpr size_t kLhsRows = 16;
-constexpr size_t kRhsCols = 16;
-constexpr size_t kInner = 48;
-
-float lhs_input[kLhsRows * kInner]
-    __attribute__((section(".data"), used, retain))
-    __attribute__((aligned(16)));
-float rhs_input[kInner * kRhsCols]
-    __attribute__((section(".data"), used, retain))
-    __attribute__((aligned(16)));
-float result_output[kLhsRows * kRhsCols]
-    __attribute__((section(".data"), used, retain))
-    __attribute__((aligned(16)));
-
 // LHS is row-major, RHS is col-major.
-void MatMulF(size_t lhs_rows, size_t inner, size_t rhs_cols, const float* lhs,
-             const float* rhs, float* result) {
+extern "C" void MatMulF(size_t lhs_rows, size_t inner, size_t rhs_cols, const float* lhs,
+                        const float* rhs, float* result) {
   size_t vlmax = __riscv_vsetvlmax_e32m1();
 
   for (size_t r = 0; r < lhs_rows; ++r) {
@@ -60,16 +45,4 @@ void MatMulF(size_t lhs_rows, size_t inner, size_t rhs_cols, const float* lhs,
       __riscv_vse32_v_f32m1(result_row + c, vacc, 1);
     }
   }
-}
-
-int main(int argc, char** argv) {
-  uint32_t mcontext0_write_value = 1;
-  asm volatile("csrw 0x7C0, %0" : : "r"(mcontext0_write_value));
-
-  MatMulF(kLhsRows, kInner, kRhsCols, lhs_input, rhs_input, result_output);
-
-  mcontext0_write_value = 0;
-  asm volatile("csrw 0x7C0, %0" : : "r"(mcontext0_write_value));
-
-  return 0;
 }

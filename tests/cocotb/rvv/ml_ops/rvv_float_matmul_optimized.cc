@@ -16,22 +16,8 @@
 
 #include <cstdint>
 
-constexpr size_t kLhsRows = 16;
-constexpr size_t kRhsCols = 16;
-constexpr size_t kInner = 48;
-
-float lhs_input[kLhsRows * kInner]
-    __attribute__((section(".data"), used, retain))
-    __attribute__((aligned(16)));
-float rhs_input[kInner * kRhsCols]
-    __attribute__((section(".data"), used, retain))
-    __attribute__((aligned(16)));
-float result_output[kLhsRows * kRhsCols]
-    __attribute__((section(".data"), used, retain))
-    __attribute__((aligned(16)));
-
 // LHS is row-major, RHS is col-major.
-void MatMulF(size_t lhs_rows, size_t inner, size_t rhs_cols, const float* lhs,
+extern "C" void MatMulF(size_t lhs_rows, size_t inner, size_t rhs_cols, const float* lhs,
              const float* rhs, float* result) {
   size_t vlmax = __riscv_vsetvlmax_e32m1();
 
@@ -101,8 +87,14 @@ void MatMulF(size_t lhs_rows, size_t inner, size_t rhs_cols, const float* lhs,
         vacc_32 = __riscv_vfmacc_vv_f32m1_tu(vacc_32, vlhs_3, vrhs_2, vl);
         vacc_33 = __riscv_vfmacc_vv_f32m1_tu(vacc_33, vlhs_3, vrhs_3, vl);
 
-        lhs_data_0 += vl; lhs_data_1 += vl; lhs_data_2 += vl; lhs_data_3 += vl;
-        rhs_data_0 += vl; rhs_data_1 += vl; rhs_data_2 += vl; rhs_data_3 += vl;
+        lhs_data_0 += vl;
+        lhs_data_1 += vl;
+        lhs_data_2 += vl;
+        lhs_data_3 += vl;
+        rhs_data_0 += vl;
+        rhs_data_1 += vl;
+        rhs_data_2 += vl;
+        rhs_data_3 += vl;
         k -= vl;
 
         if (k == 0) break;
@@ -138,8 +130,14 @@ void MatMulF(size_t lhs_rows, size_t inner, size_t rhs_cols, const float* lhs,
         vacc_32 = __riscv_vfmacc_vv_f32m1_tu(vacc_32, vlhs_3, vrhs_2, vl);
         vacc_33 = __riscv_vfmacc_vv_f32m1_tu(vacc_33, vlhs_3, vrhs_3, vl);
 
-        lhs_data_0 += vl; lhs_data_1 += vl; lhs_data_2 += vl; lhs_data_3 += vl;
-        rhs_data_0 += vl; rhs_data_1 += vl; rhs_data_2 += vl; rhs_data_3 += vl;
+        lhs_data_0 += vl;
+        lhs_data_1 += vl;
+        lhs_data_2 += vl;
+        lhs_data_3 += vl;
+        rhs_data_0 += vl;
+        rhs_data_1 += vl;
+        rhs_data_2 += vl;
+        rhs_data_3 += vl;
         k -= vl;
 
         if (k == 0) break;
@@ -175,8 +173,14 @@ void MatMulF(size_t lhs_rows, size_t inner, size_t rhs_cols, const float* lhs,
         vacc_32 = __riscv_vfmacc_vv_f32m1_tu(vacc_32, vlhs_3, vrhs_2, vl);
         vacc_33 = __riscv_vfmacc_vv_f32m1_tu(vacc_33, vlhs_3, vrhs_3, vl);
 
-        lhs_data_0 += vl; lhs_data_1 += vl; lhs_data_2 += vl; lhs_data_3 += vl;
-        rhs_data_0 += vl; rhs_data_1 += vl; rhs_data_2 += vl; rhs_data_3 += vl;
+        lhs_data_0 += vl;
+        lhs_data_1 += vl;
+        lhs_data_2 += vl;
+        lhs_data_3 += vl;
+        rhs_data_0 += vl;
+        rhs_data_1 += vl;
+        rhs_data_2 += vl;
+        rhs_data_3 += vl;
         k -= vl;
 
         if (k == 0) break;
@@ -212,30 +216,52 @@ void MatMulF(size_t lhs_rows, size_t inner, size_t rhs_cols, const float* lhs,
         vacc_32 = __riscv_vfmacc_vv_f32m1_tu(vacc_32, vlhs_3, vrhs_2, vl);
         vacc_33 = __riscv_vfmacc_vv_f32m1_tu(vacc_33, vlhs_3, vrhs_3, vl);
 
-        lhs_data_0 += vl; lhs_data_1 += vl; lhs_data_2 += vl; lhs_data_3 += vl;
-        rhs_data_0 += vl; rhs_data_1 += vl; rhs_data_2 += vl; rhs_data_3 += vl;
+        lhs_data_0 += vl;
+        lhs_data_1 += vl;
+        lhs_data_2 += vl;
+        lhs_data_3 += vl;
+        rhs_data_0 += vl;
+        rhs_data_1 += vl;
+        rhs_data_2 += vl;
+        rhs_data_3 += vl;
         k -= vl;
       }
 
-      vfloat32m1_t vres_00 = __riscv_vfredusum_vs_f32m1_f32m1(vacc_00, vzero, vlmax);
-      vfloat32m1_t vres_01 = __riscv_vfredusum_vs_f32m1_f32m1(vacc_01, vzero, vlmax);
-      vfloat32m1_t vres_02 = __riscv_vfredusum_vs_f32m1_f32m1(vacc_02, vzero, vlmax);
-      vfloat32m1_t vres_03 = __riscv_vfredusum_vs_f32m1_f32m1(vacc_03, vzero, vlmax);
+      vfloat32m1_t vres_00 =
+          __riscv_vfredusum_vs_f32m1_f32m1(vacc_00, vzero, vlmax);
+      vfloat32m1_t vres_01 =
+          __riscv_vfredusum_vs_f32m1_f32m1(vacc_01, vzero, vlmax);
+      vfloat32m1_t vres_02 =
+          __riscv_vfredusum_vs_f32m1_f32m1(vacc_02, vzero, vlmax);
+      vfloat32m1_t vres_03 =
+          __riscv_vfredusum_vs_f32m1_f32m1(vacc_03, vzero, vlmax);
 
-      vfloat32m1_t vres_10 = __riscv_vfredusum_vs_f32m1_f32m1(vacc_10, vzero, vlmax);
-      vfloat32m1_t vres_11 = __riscv_vfredusum_vs_f32m1_f32m1(vacc_11, vzero, vlmax);
-      vfloat32m1_t vres_12 = __riscv_vfredusum_vs_f32m1_f32m1(vacc_12, vzero, vlmax);
-      vfloat32m1_t vres_13 = __riscv_vfredusum_vs_f32m1_f32m1(vacc_13, vzero, vlmax);
+      vfloat32m1_t vres_10 =
+          __riscv_vfredusum_vs_f32m1_f32m1(vacc_10, vzero, vlmax);
+      vfloat32m1_t vres_11 =
+          __riscv_vfredusum_vs_f32m1_f32m1(vacc_11, vzero, vlmax);
+      vfloat32m1_t vres_12 =
+          __riscv_vfredusum_vs_f32m1_f32m1(vacc_12, vzero, vlmax);
+      vfloat32m1_t vres_13 =
+          __riscv_vfredusum_vs_f32m1_f32m1(vacc_13, vzero, vlmax);
 
-      vfloat32m1_t vres_20 = __riscv_vfredusum_vs_f32m1_f32m1(vacc_20, vzero, vlmax);
-      vfloat32m1_t vres_21 = __riscv_vfredusum_vs_f32m1_f32m1(vacc_21, vzero, vlmax);
-      vfloat32m1_t vres_22 = __riscv_vfredusum_vs_f32m1_f32m1(vacc_22, vzero, vlmax);
-      vfloat32m1_t vres_23 = __riscv_vfredusum_vs_f32m1_f32m1(vacc_23, vzero, vlmax);
+      vfloat32m1_t vres_20 =
+          __riscv_vfredusum_vs_f32m1_f32m1(vacc_20, vzero, vlmax);
+      vfloat32m1_t vres_21 =
+          __riscv_vfredusum_vs_f32m1_f32m1(vacc_21, vzero, vlmax);
+      vfloat32m1_t vres_22 =
+          __riscv_vfredusum_vs_f32m1_f32m1(vacc_22, vzero, vlmax);
+      vfloat32m1_t vres_23 =
+          __riscv_vfredusum_vs_f32m1_f32m1(vacc_23, vzero, vlmax);
 
-      vfloat32m1_t vres_30 = __riscv_vfredusum_vs_f32m1_f32m1(vacc_30, vzero, vlmax);
-      vfloat32m1_t vres_31 = __riscv_vfredusum_vs_f32m1_f32m1(vacc_31, vzero, vlmax);
-      vfloat32m1_t vres_32 = __riscv_vfredusum_vs_f32m1_f32m1(vacc_32, vzero, vlmax);
-      vfloat32m1_t vres_33 = __riscv_vfredusum_vs_f32m1_f32m1(vacc_33, vzero, vlmax);
+      vfloat32m1_t vres_30 =
+          __riscv_vfredusum_vs_f32m1_f32m1(vacc_30, vzero, vlmax);
+      vfloat32m1_t vres_31 =
+          __riscv_vfredusum_vs_f32m1_f32m1(vacc_31, vzero, vlmax);
+      vfloat32m1_t vres_32 =
+          __riscv_vfredusum_vs_f32m1_f32m1(vacc_32, vzero, vlmax);
+      vfloat32m1_t vres_33 =
+          __riscv_vfredusum_vs_f32m1_f32m1(vacc_33, vzero, vlmax);
 
       __riscv_vse32_v_f32m1(result + r * rhs_cols + c, vres_00, 1);
       __riscv_vse32_v_f32m1(result + r * rhs_cols + c + 1, vres_01, 1);
@@ -260,14 +286,4 @@ void MatMulF(size_t lhs_rows, size_t inner, size_t rhs_cols, const float* lhs,
   }
 }
 
-int main(int argc, char** argv) {
-  uint32_t mcontext0_write_value = 1;
-  asm volatile("csrw 0x7C0, %0" : : "r"(mcontext0_write_value));
 
-  MatMulF(kLhsRows, kInner, kRhsCols, lhs_input, rhs_input, result_output);
-
-  mcontext0_write_value = 0;
-  asm volatile("csrw 0x7C0, %0" : : "r"(mcontext0_write_value));
-
-  return 0;
-}
