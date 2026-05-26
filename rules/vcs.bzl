@@ -79,148 +79,174 @@ _vcs_testbench_test = rule(
 def vcs_testbench_test(name, tags=[], **kwargs):
     _vcs_testbench_test(name = name, tags = ["vcs"] + tags, **kwargs)
 
-def _vcs_systemc_binary_impl(ctx):
+
+
+def _vcs_binary_impl(ctx):
     verilog_files = []
     for dep in ctx.attr.verilog_deps:
         verilog_files += _collect_verilog_files(dep)
-    systemc_include_paths = []
-    systemc_link_args = []
-    libs = []
+    verilog_files += ctx.files.verilog_srcs
 
-    for dep in ctx.attr.systemc_deps:
-        transitive_quote_includes = depset([], transitive = [dep[CcInfo].compilation_context.quote_includes])
-        transitive_system_includes = depset([], transitive = [dep[CcInfo].compilation_context.system_includes])
-        for include in transitive_quote_includes.to_list():
-            if include.find('accellera_systemc') == -1:
-                systemc_include_paths += ["-cflags", "-I" + include]
-        for include in transitive_system_includes.to_list():
-            if include.find('accellera_systemc') == -1:
-                systemc_include_paths += ["-cflags", "-I" + include]
+    libs = []
+    objects = []
+    cflags = []
+    headers_depsets = []
+
+    for dep in ctx.attr.deps:
+        # 1. Gather include paths and headers depset
+        compilation_context = dep[CcInfo].compilation_context
+        headers_depsets.append(compilation_context.headers)
+        for include in compilation_context.quote_includes.to_list():
+            cflags += ["-cflags", "-I" + include]
+        for include in compilation_context.system_includes.to_list():
+            cflags += ["-cflags", "-I" + include]
+
+        # 2. Gather static libraries and object files
         transitive_linker_inputs = depset([], transitive = [dep[CcInfo].linking_context.linker_inputs])
         for link in transitive_linker_inputs.to_list():
             for library in link.libraries:
                 if library.pic_static_library:
-                    if library.pic_static_library.path.find('accellera_systemc') == -1:
-                        libs.append(library.pic_static_library)
+                    libs.append(library.pic_static_library)
                 elif library.static_library:
-                    if library.static_library.path.find('accellera_systemc') == -1:
-                        libs.append(library.static_library)
+                    libs.append(library.static_library)
                 if library.pic_objects:
-                    for object in library.pic_objects:
-                        systemc_link_args.append(object.path)
+                    for obj in library.pic_objects:
+                        objects.append(obj)
+                elif library.objects:
+                    for obj in library.objects:
+                        objects.append(obj)
 
     vcs_binary_output = ctx.actions.declare_file(ctx.attr.name)
-    vlogan_command = [
-        "vlogan",
-        "-kdb",
-        "-full64",
-        "-sverilog",
-        "-sysc",
-        "-q",
-        "-incr_vlogan",
-        "+define+SIMULATION",
-    ] + ctx.attr.build_args
-    vlogan_outputs = []
-    verilog_files += ctx.files.verilog_srcs
-    verilog_include_paths = []
-    for f in verilog_files:
-        verilog_include_paths  += ["-cflags", "-I" + f.dirname]
-    for (i, file) in enumerate(verilog_files):
-        vlogan_output = ctx.actions.declare_file(file.path + ".stamp")
-        vlogan_outputs.append(vlogan_output)
-        main_module_args = []
-        if file.basename.startswith(ctx.attr.module):
-            main_module_args += ["-sc_model", ctx.attr.module]
-        if file.basename.startswith(ctx.attr.module) and ctx.attr.portmap:
-            main_module_args += ["-sc_portmap", ctx.file.portmap.path]
-        prev_input = [vlogan_outputs[i-1]] if i > 0 else []
-        ctx.actions.run_shell(
-            command = " ".join(
-                vlogan_command +
-                main_module_args +
-                [file.path, "&&", "touch", vlogan_output.path]
-            ),
-            outputs = [vlogan_output],
-            inputs = [file] + prev_input,
-            use_default_shell_env = True,
-            progress_message = "[VLOGAN] %{input}",
-        )
+    vcs_simv_output = ctx.actions.declare_file(ctx.attr.name + "_simv")
+    vcs_daidir_output = ctx.actions.declare_directory(ctx.attr.name + "_simv.daidir")
 
-    syscan_command = [
-        "syscan",
-        "-cflags",
-        "-g",
-        "-full64",
-        "-q",
-    ] + verilog_include_paths + systemc_include_paths
-    syscan_outputs = []
-    for (i, file) in enumerate(ctx.files.systemc_srcs):
-        syscan_output = ctx.actions.declare_file(file.path + ".stamp")
-        syscan_outputs.append(syscan_output)
-        prev_input = [syscan_outputs[i-1]] if i > 0 else [vlogan_outputs[-1]]
-        ctx.actions.run_shell(
-            command = " ".join(
-                syscan_command + [file.path, "&&", "touch", syscan_output.path]
-            ),
-            inputs = vlogan_outputs + prev_input + [file],
-            outputs = [syscan_output],
-            use_default_shell_env = True,
-            progress_message = "[SYSCAN] %{input}",
-        )
+    script = ctx.actions.declare_file(ctx.attr.name + "_vcs_link.sh")
 
-    vcs_daidir_output = ctx.actions.declare_directory(
-        ctx.attr.name + ".daidir")
-    vcs_vdb_output = ctx.actions.declare_directory(
-        ctx.attr.name + ".vdb")
+    script_content = [
+        "#!/bin/bash",
+        "set -e",
+        "mkdir -p stripped_libs",
+    ]
+
+    stripped_libs = []
+    for lib in libs:
+        stripped_path = "stripped_libs/" + lib.basename
+        script_content.append("cp -f %s %s" % (lib.path, stripped_path))
+        script_content.append("chmod +w %s" % stripped_path)
+        script_content.append("objcopy --remove-section=.sframe %s" % stripped_path)
+        stripped_libs.append(stripped_path)
+
+    stripped_objects = []
+    for obj in objects:
+        stripped_path = "stripped_libs/" + obj.basename
+        script_content.append("cp -f %s %s" % (obj.path, stripped_path))
+        script_content.append("chmod +w %s" % stripped_path)
+        script_content.append("objcopy --remove-section=.sframe %s" % stripped_path)
+        stripped_objects.append(stripped_path)
+
     vcs_command = [
         "vcs",
         "-full64",
         "-sverilog",
         "-q",
-        "-cflags", "-g",
-        "-sysc=incr",
         "-kdb",
         "+vcs+fsdbon",
+        "+define+VCS",
         "-debug_access+all",
         "+notimingcheck",
         "-timescale=1ns/1ps",
-        "-cm", "line+tgl+fsm+cond+branch+assert",
-        "sc_main",
-        "-o",
-        vcs_binary_output.path,
-    ] + systemc_link_args
-    ctx.actions.run_shell(
-        command = " ".join(vcs_command),
-        inputs = libs + vlogan_outputs + syscan_outputs,
-        outputs = [vcs_binary_output, vcs_daidir_output, vcs_vdb_output],
+        "-cflags", "-I..",
+        "-o", vcs_simv_output.path,
+    ] + cflags + ctx.attr.build_args
+
+    package_files = []
+    other_files = []
+    for file in verilog_files:
+        if file.basename.endswith("pkg.sv") or file.basename.endswith("Pkg.sv") or file.basename.startswith("defs_"):
+            package_files.append(file)
+        else:
+            other_files.append(file)
+    sorted_verilog_files = package_files + other_files
+
+    for file in sorted_verilog_files:
+        vcs_command.append(file.path)
+
+    for file in ctx.files.srcs:
+        vcs_command.append(file.path)
+
+    for lib_path in stripped_libs:
+        vcs_command.append(lib_path)
+
+    for obj_path in stripped_objects:
+        vcs_command.append(obj_path)
+
+    script_content.append(" ".join(vcs_command))
+
+    ctx.actions.write(script, "\n".join(script_content), is_executable = True)
+
+    # Generate user-facing runner script!
+    runner_content = [
+        "#!/bin/bash",
+        'SIMV_ARGS=("-q" "-suppress=ASLR_DETECTED_INFO" "-no_save")',
+        'for arg in "$@"; do',
+        '  if [[ "$arg" == --binary=* ]]; then',
+        '    val="${arg#*=}"',
+        '    SIMV_ARGS+=("+binary=$val")',
+        '  elif [[ "$arg" == --cycles=* ]]; then',
+        '    val="${arg#*=}"',
+        '    SIMV_ARGS+=("+cycles=$val")',
+        '  elif [[ "$arg" == --trace ]]; then',
+        '    SIMV_ARGS+=("+trace")',
+        '  else',
+        '    SIMV_ARGS+=("$arg")',
+        '  fi',
+        'done',
+        'RUNNER_DIR=$(dirname "$0")',
+        '# Filter out Synopsys noise!',
+        '"$RUNNER_DIR/%s_simv" "${SIMV_ARGS[@]}" 2>&1 | grep -v -E \\' % ctx.attr.name,
+        '  -e "^Chronologic VCS simulator" \\',
+        '  -e "^Contains Synopsys proprietary" \\',
+        '  -e "^Compiler version" \\',
+        '  -e "^Notice: timing checks" \\',
+        '  -e "^\\*Verdi\\*" \\',
+        '  -e "^FSDB Dumper for VCS" \\',
+        '  -e "^\\(C\\) 1996" \\',
+        '  -e "^Time: 0 ps" \\',
+        '  -e "^CPU Time:" \\',
+        '  -e "^[A-Za-z]{3} [A-Za-z]{3} [ 0-9]{2}" \\',
+        '  -e "^           V C S   S i m u l a t i o n" || true',
+    ]
+    ctx.actions.write(vcs_binary_output, "\n".join(runner_content), is_executable = True)
+
+    headers_depset = depset([], transitive = headers_depsets)
+    ctx.actions.run(
+        inputs = depset(verilog_files + ctx.files.srcs + libs + objects, transitive = [headers_depset]),
+        outputs = [vcs_simv_output, vcs_daidir_output],
+        executable = script,
         use_default_shell_env = True,
+        progress_message = "[VCS Link] Linking %s" % ctx.label,
     )
 
     return [DefaultInfo(
         files=depset([vcs_binary_output]),
-        runfiles=ctx.runfiles(files=[vcs_daidir_output, vcs_vdb_output]),
+        runfiles=ctx.runfiles(files=[vcs_simv_output, vcs_daidir_output]),
         executable=vcs_binary_output,
     )]
 
-_vcs_systemc_binary = rule(
-    _vcs_systemc_binary_impl,
+_vcs_binary = rule(
+    _vcs_binary_impl,
     attrs = {
         "verilog_srcs": attr.label_list(allow_files = True),
-        "systemc_srcs": attr.label_list(allow_files = True),
+        "srcs": attr.label_list(allow_files = True),
         "verilog_deps": attr.label_list(
             doc = "Verilog library dependencies",
             providers = [VerilogInfo],
         ),
-        "build_args": attr.string_list(allow_empty = True),
-        "systemc_deps": attr.label_list(
-            doc = "SystemC library dependencies",
+        "deps": attr.label_list(
+            doc = "C++ static library dependencies",
             providers = [CcInfo],
         ),
-        "portmap": attr.label(allow_single_file = True),
-        "module": attr.string(
-            doc = "The name of the main verilog module.",
-            mandatory = True,
-        ),
+        "build_args": attr.string_list(allow_empty = True),
         "_cc_toolchain": attr.label(
             doc = "CC compiler.",
             default = Label("@bazel_tools//tools/cpp:current_cc_toolchain"),
@@ -232,5 +258,6 @@ _vcs_systemc_binary = rule(
     executable = True,
 )
 
-def vcs_systemc_binary(name, tags=[], **kwargs):
-    _vcs_systemc_binary(name = name, tags = ["vcs"] + tags, **kwargs)
+def vcs_binary(name, tags=[], **kwargs):
+    _vcs_binary(name = name, tags = ["vcs"] + tags, **kwargs)
+

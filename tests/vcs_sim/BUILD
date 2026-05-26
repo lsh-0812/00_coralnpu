@@ -1,4 +1,4 @@
-# Copyright 2024 Google LLC
+# Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,34 +12,87 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@coralnpu_hw//rules:vcs.bzl", "vcs_systemc_binary")
+load("//rules:utils.bzl", "template_rule")
+load("@coralnpu_hw//rules:vcs.bzl", "vcs_binary")
 
 package(default_visibility = ["//visibility:public"])
 
-vcs_systemc_binary(
-    name = "core_mini_axi_sim",
-    module = "CoreMiniAxi",
-    portmap = "core_mini_axi.map",
-    systemc_deps = [
-        "@libsystemctlm_soc//:libsystemctlm_soc",
-        "//tests/verilator_sim:elf",
-        "//tests/systemc:Xbar",
-        "//tests/systemc:instruction_trace",
-    ],
-    systemc_srcs = [
-        "top.cc",
-        "main.cc",
-    ],
-    verilog_deps = [
-        "//hdl/chisel/src/coralnpu:core_mini_axi_cc_library_verilog",
-    ],
-    verilog_srcs = [
-        "@synthesis_internal//libs/tsmc12ffc:ts1n12ffcllsblvtd512x128m4swbsho_130b/VERILOG/ts1n12ffcllsblvtd512x128m4swbsho_130b.v",
-        "@synthesis_internal//libs/tsmc12ffc:ts1n12ffcllmblvtd2048x128m4swbsho_130d/VERILOG/ts1n12ffcllmblvtd2048x128m4swbsho_130d.v",
-        "@synthesis_internal//libs/tsmc12ffc:tcbn12ffcllbwp6t20p96cpdlvt.v",
-    ],
-    build_args = [
-        "+define+TSMC_INITIALIZE_MEM_USING_DEFAULT_TASKS",
-        "+define+TSMC_MEM_LOAD_RANDOM",
+template_rule(
+    vcs_binary,
+    {
+        "core_mini_axi_sim": {
+            "verilog_deps": ["//hdl/chisel/src/coralnpu:core_mini_axi_cc_library_verilog"],
+            "build_args": ["+define+DUT_MODULE=CoreMiniAxi"],
+        },
+        "core_mini_verification_axi_sim": {
+            "verilog_deps": ["//hdl/chisel/src/coralnpu:core_mini_verification_axi_cc_library_verilog"],
+            "build_args": ["+define+DUT_MODULE=CoreMiniVerificationAxi"],
+        },
+        "core_mini_highmem_axi_sim": {
+            "verilog_deps": ["//hdl/chisel/src/coralnpu:core_mini_highmem_axi_cc_library_verilog"],
+            "build_args": ["+define+DUT_MODULE=CoreMiniHighmemAxi"],
+        },
+        "core_mini_itcm512kb_dtcm512kb_axi_sim": {
+            "verilog_deps": ["//hdl/chisel/src/coralnpu:core_mini_itcm512kb_dtcm512kb_axi_verilog"],
+            "build_args": ["+define+DUT_MODULE=CoreMini_ITCM512KB_DTCM512KBAxi"],
+        },
+        "rvv_core_mini_axi_sim": {
+            "verilog_deps": ["//hdl/chisel/src/coralnpu:rvv_core_mini_axi_cc_library_verilog"],
+            "build_args": [
+                "+define+DUT_MODULE=RvvCoreMiniAxi",
+                "+define+VLEN_128",
+                "+define+ZVE32F_ON",
+                "+define+TB_SUPPORT",
+                "+define+USE_GENERIC",
+            ],
+        },
+        "rvv_core_mini_highmem_axi_sim": {
+            "verilog_deps": ["//hdl/chisel/src/coralnpu:rvv_core_mini_highmem_axi_cc_library_verilog"],
+            "build_args": [
+                "+define+DUT_MODULE=RvvCoreMiniHighmemAxi",
+                "+define+VLEN_128",
+                "+define+ZVE32F_ON",
+                "+define+TB_SUPPORT",
+                "+define+USE_GENERIC",
+            ],
+        },
+        "rvv_core_mini_itcm512kb_dtcm512kb_axi_sim": {
+            "verilog_deps": ["//hdl/chisel/src/coralnpu:rvv_core_mini_itcm512kb_dtcm512kb_axi_cc_library_verilog"],
+            "build_args": [
+                "+define+DUT_MODULE=RvvCoreMini_ITCM512KB_DTCM512KBAxi",
+                "+define+VLEN_128",
+                "+define+ZVE32F_ON",
+                "+define+TB_SUPPORT",
+                "+define+USE_GENERIC",
+            ],
+        },
+        "rvv_core_mini_verification_axi_sim": {
+            "verilog_deps": ["//hdl/chisel/src/coralnpu:rvv_core_mini_verification_axi_cc_library_verilog"],
+            "build_args": [
+                "+define+DUT_MODULE=RvvCoreMiniVerificationAxi",
+                "+define+VLEN_128",
+                "+define+ZVE32F_ON",
+                "+define+TB_SUPPORT",
+                "+define+USE_GENERIC",
+            ],
+        },
+    },
+    verilog_srcs = ["top.sv"],
+    deps = [
+        "//hdl/verilog:sram_backdoor",
     ],
 )
+
+sh_test(
+    name = "simulators_smoke_test",
+    srcs = ["simulators_smoke_test.sh"],
+    data = [
+        "//tests/vcs_sim:rvv_core_mini_verification_axi_sim",
+        "//tests/cocotb:nop_test.elf",
+    ],
+    tags = ["vcs"],
+    deps = [
+        "@bazel_tools//tools/bash/runfiles",
+    ],
+)
+
