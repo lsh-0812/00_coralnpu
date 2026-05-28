@@ -4,14 +4,18 @@
 `endif
 
 module rvv_backend_vrf(/*AUTOARG*/
-  // Outputs
-  vrf2dp_rd_data, vrf2dp_v0_data,
+  clk, 
+  rst_n, 
+  dp2vrf_rd_index, 
+  vrf2dp_rd_data, 
+  vrf2dp_v0_data, 
+  pmt2vrf_rd_index,
+  vrf2pmt_rd_data,
+  rt2vrf_wr_valid, 
+  rt2vrf_wr_data
 `ifdef TB_SUPPORT
-  vrf_data,
+  ,vrf_data
 `endif
-  // Inputs
-  clk, rst_n, dp2vrf_rd_index, 
-  rt2vrf_wr_valid, rt2vrf_wr_data
 );  
 // global signal
 input   logic                   clk;
