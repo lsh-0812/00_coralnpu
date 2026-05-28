@@ -1,6 +1,12 @@
 # Disable bzlmod and enable workspace while we migrate
 common --noenable_bzlmod --enable_workspace
 
+# Bazel 8 default-flipped --incompatible_disallow_empty_glob. Several BUILD
+# files (notably third_party/* with mixed .v/.sv source trees) rely on the
+# legacy permissive behavior. Restore it for now; clean up per-glob in a
+# follow-up.
+common --noincompatible_disallow_empty_glob
+
 build --action_env=BAZEL_CXXOPTS="-std=c++17"
 build --cxxopt='-std=c++17'
 build --conlyopt='-std=gnu11'

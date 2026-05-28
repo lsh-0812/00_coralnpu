@@ -144,7 +144,15 @@ def _verilator_cocotb_model_impl(ctx):
     make_log = ctx.actions.declare_file(outdir_name + "/make.log")
     outdir = output_file.dirname
 
-    verilator_root = "$PWD/{}.runfiles/coralnpu_hw/external/verilator".format(ctx.executable._verilator_bin.path)
+    # The @verilator runfiles live at <bin>.runfiles/<canonical>,
+    # where <canonical> is the verilator repo's canonical name (e.g.
+    # 'rules_hdl++hdl_deps+verilator'). Resolve via the verilator target's
+    # workspace_root rather than hardcoding it.
+    verilator_canonical = ctx.executable._verilator_bin.owner.workspace_name
+    verilator_root = "$PWD/{}.runfiles/{}".format(
+        ctx.executable._verilator_bin.path,
+        verilator_canonical,
+    )
     cocotb_lib_path = "$PWD/{}".format(ctx.files._cocotb_verilator_lib[0].dirname)
 
     # Prepend $PWD to paths for verilator to find them in the sandbox
@@ -182,14 +190,17 @@ def _verilator_cocotb_model_impl(ctx):
         trace = "--trace" if ctx.attr.trace else "",
     )
 
+    def _abs(p):
+        return p if p.startswith("/") else "$PWD/" + p
+
     make_cmd = "PATH=`dirname {ld}`:$PATH make -j {parallelism} -C {outdir} -f Vtop.mk {trace} CXX={cxx} AR={ar} LINK={cxx} > {make_log} 2>&1".format(
         outdir = outdir,
         cocotb_lib_path = cocotb_lib_path,
         make_log = make_log.path,
         trace = "VM_TRACE=1" if ctx.attr.trace else "",
-        ar = ar_executable,
-        ld = ld_executable,
-        cxx = compiler_executable,
+        ar = _abs(ar_executable),
+        ld = _abs(ld_executable),
+        cxx = _abs(compiler_executable),
         parallelism = _verilator_make_parallelism,
     )
 
@@ -204,6 +215,7 @@ def _verilator_cocotb_model_impl(ctx):
                 depset(ctx.files._verilator),
                 depset(ctx.files._cocotb_verilator_lib),
                 depset(ctx.files._cocotb_verilator_cpp),
+                cc_toolchain.all_files,
             ],
         ),
         command = script,
@@ -552,11 +564,11 @@ def vcs_cocotb_test(
     # Prepend '../' because Cocotb runs from 'sim_build/', so we must go up one level to reach the execution root.
     build_args = list(kwargs.pop("build_args", []))
     for f in verilog_model_files:
-        # Note that $(rootpath) expands to a space-separated list if the label contains multiple files.
+        # Note that $(execpath) expands to a space-separated list if the label contains multiple files.
         # VCS expects a separate -v flag for each file. This implementation assumes each entry in
         # verilog_model_files is a single-file label. If filegroups are needed, the expansion logic
         # should probably be moved into the cocotb_test rule implementation in rules_hdl.
-        build_args.extend(["-v", "../$(rootpath {})".format(f)])
+        build_args.extend(["-v", "../$(execpath {})".format(f)])
     kwargs["build_args"] = build_args
 
     if model:
@@ -614,7 +626,7 @@ def _vcs_cocotb_test_suite(
         model = name + "_vcs_model"
         model_build_args = list(kwargs.get("build_args", []))
         for f in kwargs.get("verilog_model_files", []):
-            model_build_args.extend(["-v", "../$(rootpath {})".format(f)])
+            model_build_args.extend(["-v", "../$(execpath {})".format(f)])
         vcs_cocotb_model(
             name = model,
             verilog_sources = verilog_sources,
@@ -761,7 +773,7 @@ def cocotb_test_suite(name, testcases, simulators = ["verilator"], coverage = Fa
                 if coverage_cfg:
                     build_args.extend([
                         "-cm_hier",
-                        "../$(rootpath {})".format(coverage_cfg),
+                        "../$(execpath {})".format(coverage_cfg),
                     ])
             sim_kwargs["build_args"] = build_args
 

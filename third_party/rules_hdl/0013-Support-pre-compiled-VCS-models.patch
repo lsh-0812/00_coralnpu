@@ -45,7 +45,7 @@ diff -urN a/cocotb/cocotb_wrapper.py b/cocotb/cocotb_wrapper.py
  
      return parser
  
-@@ -196,13 +204,92 @@
+@@ -196,13 +204,96 @@
      cocotb_tools.runner.MAX_PARALLEL_BUILD_JOBS = 32
      runner = get_runner(args.sim)
  
@@ -112,7 +112,9 @@ diff -urN a/cocotb/cocotb_wrapper.py b/cocotb/cocotb_wrapper.py
 +
 +        print(f"Using pre-compiled VCS model from {runfiles_path}")
 +
-+        vcs_lib_dir = r.Rlocation(f"{main_ws}/external/coralnpu_pip_deps_cocotb/cocotb/libs")
++        vcs_lib_dir = r.Rlocation("coralnpu_pip_deps_cocotb/cocotb/libs")
++        if not vcs_lib_dir:
++            vcs_lib_dir = r.Rlocation(f"{main_ws}/external/coralnpu_pip_deps_cocotb/cocotb/libs")
 +        if not vcs_lib_dir:
 +            vcs_lib_dir = r.Rlocation("external/coralnpu_pip_deps_cocotb/cocotb/libs")
 +        if vcs_lib_dir:
@@ -133,9 +135,11 @@ diff -urN a/cocotb/cocotb_wrapper.py b/cocotb/cocotb_wrapper.py
 +        else:
 +            sim_build = os.path.dirname(r.Rlocation(f"{main_ws}/{model_path}"))
          test_flags['build_dir'] = sim_build
--        test_flags['extra_env']['LD_LIBRARY_PATH'] = "{}:{}".format(r.Rlocation("coralnpu_hw/external/coralnpu_pip_deps_cocotb/cocotb/libs"), os.environ.get("LD_LIBRARY_PATH", ""))
+-        test_flags['extra_env']['LD_LIBRARY_PATH'] = "{}:{}".format(r.Rlocation("coralnpu_pip_deps_cocotb/cocotb/libs"), os.environ.get("LD_LIBRARY_PATH", ""))
 +
-+        verilator_lib_dir = r.Rlocation(f"{main_ws}/external/coralnpu_pip_deps_cocotb/cocotb/libs")
++        verilator_lib_dir = r.Rlocation("coralnpu_pip_deps_cocotb/cocotb/libs")
++        if not verilator_lib_dir:
++            verilator_lib_dir = r.Rlocation(f"{main_ws}/external/coralnpu_pip_deps_cocotb/cocotb/libs")
 +        if not verilator_lib_dir:
 +            verilator_lib_dir = r.Rlocation("external/coralnpu_pip_deps_cocotb/cocotb/libs")
 +        if verilator_lib_dir:

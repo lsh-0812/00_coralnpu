@@ -21,26 +21,27 @@ class CoralNPUV2Simulator:
   """Wrapper for CoralNPUV2SimulatorPy providing helper methods."""
 
   def __init__(self, highmem_ld=True, exit_on_ebreak=True, semihost_htif=True):
-    self.options = coralnpu_v2_sim_pybind.CoralNPUV2SimulatorOptions()
+    self.options = coralnpu_v2_sim_pybind.CoralNPUSimulatorOptions()
     self.options.semihost_htif = semihost_htif
     if highmem_ld:
-      self.dtcm_range = self._create_lsu_range(0x100000, 0x100000)
-      self.extmem_range = self._create_lsu_range(0x20000000, 0x400000)
-      self.ddr_range = self._create_lsu_range(0x80000000, 0x8000000) # 128MB DDR
-      self.options.itcm_start_address = 0x0
-      self.options.itcm_length = 0x00100000
+      MP = coralnpu_v2_sim_pybind.MemoryPermission
+      self.itcm_region = self._create_memory_region(0x0, 0x00100000, MP.kReadWriteExecute)
+      self.dtcm_region = self._create_memory_region(0x100000, 0x100000, MP.kReadWrite)
+      self.extmem_region = self._create_memory_region(0x20000000, 0x400000, MP.kReadWrite)
+      self.ddr_region = self._create_memory_region(0x80000000, 0x8000000, MP.kReadWriteExecute)
       self.options.initial_misa_value = 0x40201120
-      self.options.lsu_access_ranges = [self.dtcm_range, self.extmem_range, self.ddr_range]
+      self.options.memory_regions = [self.itcm_region, self.dtcm_region, self.extmem_region, self.ddr_region]
     if exit_on_ebreak:
       self.options.exit_on_ebreak = True
-    self.sim = coralnpu_v2_sim_pybind.CoralNPUV2SimulatorPy(self.options)
+    self.sim = coralnpu_v2_sim_pybind.CoralNPUSimulatorPy(self.options)
 
-  def _create_lsu_range(self, start_address, length):
-    """Creates a CoralNPUV2LsuAccessRange object."""
-    lsu_range = coralnpu_v2_sim_pybind.CoralNPUV2LsuAccessRange()
-    lsu_range.start_address = start_address
-    lsu_range.length = length
-    return lsu_range
+  def _create_memory_region(self, start_address, length, permissions):
+    """Creates a CoralNPUV2MemoryRegion object."""
+    region = coralnpu_v2_sim_pybind.CoralNPUV2MemoryRegion()
+    region.start_address = start_address
+    region.length = length
+    region.permissions = permissions
+    return region
 
   def load_program(self, elf_path, entry_point=None):
     """Loads an ELF program.

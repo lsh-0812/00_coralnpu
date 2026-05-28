@@ -49,6 +49,22 @@ rules_cc_toolchains()
 
 coralnpu_repos()
 
+# rules_java 8.14.0 requires its `compatibility_proxy` repo to be defined.
+# compatibility_proxy_repo transitively needs bazel_features.
+http_archive(
+    name = "bazel_features",
+    sha256 = "07bd2b18764cdee1e0d6ff42c9c0a6111ffcbd0c17f0de38e7f44f1519d1c0cd",
+    strip_prefix = "bazel_features-1.32.0",
+    url = "https://github.com/bazel-contrib/bazel_features/releases/download/v1.32.0/bazel_features-v1.32.0.tar.gz",
+)
+
+load("@bazel_features//:deps.bzl", "bazel_features_deps")
+
+bazel_features_deps()
+
+load("@rules_java//java:rules_java_deps.bzl", "compatibility_proxy_repo")
+compatibility_proxy_repo()
+
 load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
 
 protobuf_deps()
@@ -65,12 +81,6 @@ load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 python_register_toolchains(
     name = "python311",
     python_version = "3.11.6",
-)
-load("@pybind11_bazel//:python_configure.bzl", "python_configure")
-python_configure(
-    name = "local_config_python",
-    python_version = "3",
-    python_interpreter_target = "@python311_x86_64-unknown-linux-gnu//:python",
 )
 coralnpu_repos2()
 
@@ -95,11 +105,9 @@ scalatest_repositories()
 
 scalatest_toolchain()
 
-load("@rules_proto//proto:repositories.bzl", "rules_proto_dependencies", "rules_proto_toolchains")
+load("@rules_proto//proto:repositories.bzl", "rules_proto_dependencies")
 
 rules_proto_dependencies()
-
-rules_proto_toolchains()
 
 load("//rules:deps.bzl", "coralnpu_deps")
 
@@ -190,20 +198,9 @@ load("@tflm_pip_deps//:requirements.bzl", "install_deps")
 
 install_deps()
 
-http_archive(
-    name = "bazel_features",
-    sha256 = "07bd2b18764cdee1e0d6ff42c9c0a6111ffcbd0c17f0de38e7f44f1519d1c0cd",
-    strip_prefix = "bazel_features-1.32.0",
-    url = "https://github.com/bazel-contrib/bazel_features/releases/download/v1.32.0/bazel_features-v1.32.0.tar.gz",
-)
+load("@rules_cc//cc:extensions.bzl", cc_compatibility_proxy_repo = "compatibility_proxy_repo")
 
-load("@bazel_features//:deps.bzl", "bazel_features_deps")
-
-bazel_features_deps()
-
-load("@rules_cc//cc:extensions.bzl", "compatibility_proxy_repo")
-
-compatibility_proxy_repo()
+cc_compatibility_proxy_repo()
 
 mpact_repos()
 

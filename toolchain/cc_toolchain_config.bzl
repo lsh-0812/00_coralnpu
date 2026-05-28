@@ -128,6 +128,7 @@ def _impl(ctx):
         ],
     )
 
+    tc_root = ctx.file._toolchain_root.dirname
     includes_feature = feature(
         name = "includes",
         enabled = True,
@@ -139,15 +140,15 @@ def _impl(ctx):
                         flags = [
                             "-nostdinc",
                             "-isystem",
-                            "external/toolchain_coralnpu_v2/riscv32-unknown-elf/include/c++/15.1.0",
+                            tc_root + "/riscv32-unknown-elf/include/c++/15.1.0",
                             "-isystem",
-                            "external/toolchain_coralnpu_v2/riscv32-unknown-elf/include/c++/15.1.0/backward",
+                            tc_root + "/riscv32-unknown-elf/include/c++/15.1.0/backward",
                             "-isystem",
-                            "external/toolchain_coralnpu_v2/riscv32-unknown-elf/include/c++/15.1.0/riscv32-unknown-elf",
+                            tc_root + "/riscv32-unknown-elf/include/c++/15.1.0/riscv32-unknown-elf",
                             "-isystem",
-                            "external/toolchain_coralnpu_v2/lib/gcc/riscv32-unknown-elf/15.1.0/include",
+                            tc_root + "/lib/gcc/riscv32-unknown-elf/15.1.0/include",
                             "-isystem",
-                            "external/toolchain_coralnpu_v2/riscv32-unknown-elf/include",
+                            tc_root + "/riscv32-unknown-elf/include",
                         ],
                     ),
                 ],
@@ -405,6 +406,10 @@ coralnpu_v2_cc_toolchain_config = rule(
     implementation = _impl,
     attrs = {
         "semihosting": attr.bool(),
+        "_toolchain_root": attr.label(
+            default = "@toolchain_coralnpu_v2//:BUILD.bazel",
+            allow_single_file = True,
+        ),
     },
     provides = [CcToolchainConfigInfo],
 )
