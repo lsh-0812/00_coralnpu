@@ -345,14 +345,23 @@ module rvv_backend_falu_unit(
           VFSGNJ: begin
             op_type   = fpnew_pkg::SGNJ;
             rnd_mod_i = fpnew_pkg::RNE;
+            for(int i=0;i<`VLENW;i++) begin
+              op_i[i] = {src3[i*`WORD_WIDTH+:`WORD_WIDTH], src1[i*`WORD_WIDTH+:`WORD_WIDTH], src2[i*`WORD_WIDTH+:`WORD_WIDTH]};
+            end
           end
           VFSGNJN: begin
             op_type   = fpnew_pkg::SGNJ;
             rnd_mod_i = fpnew_pkg::RTZ;
+            for(int i=0;i<`VLENW;i++) begin
+              op_i[i] = {src3[i*`WORD_WIDTH+:`WORD_WIDTH], src1[i*`WORD_WIDTH+:`WORD_WIDTH], src2[i*`WORD_WIDTH+:`WORD_WIDTH]};
+            end
           end
           VFSGNJX: begin
             op_type   = fpnew_pkg::SGNJ;
             rnd_mod_i = fpnew_pkg::RDN;
+            for(int i=0;i<`VLENW;i++) begin
+              op_i[i] = {src3[i*`WORD_WIDTH+:`WORD_WIDTH], src1[i*`WORD_WIDTH+:`WORD_WIDTH], src2[i*`WORD_WIDTH+:`WORD_WIDTH]};
+            end
           end
           VFMIN: begin
             op_type   = fpnew_pkg::MINMAX;
