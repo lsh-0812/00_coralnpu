@@ -53,6 +53,7 @@ object CsrAddress extends ChiselEnum {
   val MISA      = Value(0x301.U(12.W))
   val MIE       = Value(0x304.U(12.W))
   val MTVEC     = Value(0x305.U(12.W))
+  val MSTATUSH  = Value(0x310.U(12.W))
   val MSCRATCH  = Value(0x340.U(12.W))
   val MEPC      = Value(0x341.U(12.W))
   val MCAUSE    = Value(0x342.U(12.W))
@@ -328,6 +329,7 @@ class Csr(p: Parameters) extends Module {
   val misaEn      = csr_address === CsrAddress.MISA
   val mieEn       = csr_address === CsrAddress.MIE
   val mtvecEn     = csr_address === CsrAddress.MTVEC
+  val mstatushEn  = csr_address === CsrAddress.MSTATUSH
   val mscratchEn  = csr_address === CsrAddress.MSCRATCH
   val mepcEn      = csr_address === CsrAddress.MEPC
   val mcauseEn    = csr_address === CsrAddress.MCAUSE
@@ -404,6 +406,7 @@ class Csr(p: Parameters) extends Module {
       mieEn       -> mie,
       mipEn       -> Cat(0.U(20.W), io.irq, 0.U(3.W), io.timer_irq, 0.U(3.W), io.software_irq, 0.U(3.W)),
       mtvecEn     -> mtvec,
+      mstatushEn  -> 0.U(32.W),
       mscratchEn  -> mscratch,
       mepcEn      -> mepc,
       mcauseEn    -> mcause,
@@ -470,6 +473,7 @@ class Csr(p: Parameters) extends Module {
     when (mstatusEn)    { mstatus_mie := wdata(3); mstatus_mpie := wdata(7) }
     when (mieEn)        { mie       := wdata & "h888".U }
     when (mtvecEn)      { mtvec     := wdata }
+    //Writes to mstatush are ignored (hardwired zero)
     when (mscratchEn)   { mscratch  := wdata }
     when (mepcEn)       { mepc      := wdata }
     when (mcauseEn)     { mcause    := wdata }
