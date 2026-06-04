@@ -29,7 +29,7 @@ index 2b0a3c2..90c70bc 100644
          seed_args +
          test_module_args +
 +        (" --model {}".format(ctx.executable.model.short_path) if ctx.attr.sim_name == "verilator" else "" ) +
-         ("&& cp -fr `pwd`/sim_build/simv.vdb $TEST_UNDECLARED_OUTPUTS_DIR" if ctx.attr.sim_name == "vcs" else "")
+         ("&& (cp -fr `pwd`/sim_build/simv.vdb $TEST_UNDECLARED_OUTPUTS_DIR || true)" if ctx.attr.sim_name == "vcs" else "")
      )
  
 @@ -185,7 +186,8 @@ def _cocotb_test_impl(ctx):

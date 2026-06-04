@@ -36,22 +36,44 @@ test --repo_env BAZEL_JVM_FETCH_SOURCES=false
 # Skip VCS by default as most workstations will not have licenses.
 build --build_tag_filters="-vcs,-synthesis,-power"
 build --action_env=VCS_HOME
+build --host_action_env=VCS_HOME
 build --action_env=VC_STATIC_HOME
+build --host_action_env=VC_STATIC_HOME
 build --action_env=VERDI_HOME
+build --host_action_env=VERDI_HOME
 build --action_env=LM_LICENSE_FILE
+build --host_action_env=LM_LICENSE_FILE
+build --action_env=LICENSE_SERVER_VCSSIM
+build --host_action_env=LICENSE_SERVER_VCSSIM
 build --action_env=XILINXD_LICENSE_FILE
+build --host_action_env=XILINXD_LICENSE_FILE
 test --build_tag_filters="-vcs,-synthesis,-power"
 test --test_tag_filters="-vcs,-synthesis,-power"
 test --action_env=VCS_HOME
+test --host_action_env=VCS_HOME
 test --action_env=VC_STATIC_HOME
+test --host_action_env=VC_STATIC_HOME
 test --action_env=VERDI_HOME
+test --host_action_env=VERDI_HOME
 test --action_env=LM_LICENSE_FILE
+test --host_action_env=LM_LICENSE_FILE
+test --action_env=LICENSE_SERVER_VCSSIM
+test --host_action_env=LICENSE_SERVER_VCSSIM
 test --action_env=XILINXD_LICENSE_FILE
+test --host_action_env=XILINXD_LICENSE_FILE
 run --action_env=VCS_HOME
+run --host_action_env=VCS_HOME
 run --action_env=VC_STATIC_HOME
+run --host_action_env=VC_STATIC_HOME
 run --action_env=VERDI_HOME
+run --host_action_env=VERDI_HOME
 run --action_env=LM_LICENSE_FILE
+run --host_action_env=LM_LICENSE_FILE
+run --action_env=LICENSE_SERVER_VCSSIM
+run --host_action_env=LICENSE_SERVER_VCSSIM
 run --action_env=XILINXD_LICENSE_FILE
+run --host_action_env=XILINXD_LICENSE_FILE
+
 
 # Add config to enable VCS targets.
 build:vcs --build_tag_filters="vcs"

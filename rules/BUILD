@@ -17,5 +17,6 @@ package(default_visibility = ["//visibility:public"])
 
 exports_files([
     "default.vlt.tpl",
-    "chisel_test_runner.sh"
+    "chisel_test_runner.sh",
+    "vcs_model_wrapper.sh.template",
 ])

@@ -21,6 +21,7 @@ load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("@rules_hdl//cocotb:cocotb.bzl", "cocotb_test")
 load("@rules_hdl//verilog:providers.bzl", "VerilogInfo")
 load("@rules_python//python:defs.bzl", "py_library")
+load("@coralnpu_hw//rules:verilog.bzl", "collect_verilog_files")
 
 # Number of CPUs reserved per Verilate action in Bazel's local scheduler.
 # Sourced from `nproc` at workspace-fetch time so we don't oversubscribe
@@ -220,6 +221,111 @@ def _verilator_cocotb_model_impl(ctx):
         ),
     ]
 
+
+def _vcs_cocotb_model_impl(ctx):
+    hdl_toplevel = ctx.attr.hdl_toplevel
+    outdir_name = ctx.attr.name + "_vcs_build"
+
+    verilog_files = collect_verilog_files(ctx.attr.verilog_sources, ctx.files.verilog_sources).to_list()
+
+    output_simv = ctx.actions.declare_file(outdir_name + "/simv")
+    output_daidir = ctx.actions.declare_directory(outdir_name + "/simv.daidir")
+    output_vdb = ctx.actions.declare_directory(outdir_name + "/simv.vdb")
+
+    vcs_lib = None
+    for f in ctx.files._vcs_libs:
+        if f.basename == "libcocotbvpi_vcs.so":
+            vcs_lib = f
+            break
+    if not vcs_lib:
+        fail("Could not find libcocotbvpi_vcs.so in _vcs_libs")
+
+    # Expand location in build_args
+    expanded_build_args = [ctx.expand_location(arg, ctx.attr.data) for arg in ctx.attr.build_args]
+
+    # We need absolute paths for files we pass explicitly (sources, includes, libs)
+    # because we will CD into a subdirectory.
+    includes_args = ["+incdir+$EXECROOT/" + inc for inc in ctx.attr.includes]
+    defines_args = ["+define+{}={}".format(name, value) for name, value in ctx.attr.defines.items()]
+    parameters_args = ["-pvalue+{}.{}={}".format(hdl_toplevel, name, value) for name, value in ctx.attr.parameters.items()]
+    sources_args = ["$EXECROOT/" + f.path for f in verilog_files]
+
+    vcs_opts = [
+        "-full64",
+        "-debug_access+all",
+        "+acc+3",
+        "-sverilog",
+        "-LDFLAGS", "-Wl,--no-as-needed",
+        "-q",
+        "-suppress=VPI-CT-NS,SV-LCM-PPWI"
+    ]
+
+    load_arg = "-load {}:vlog_startup_routines_bootstrap".format(vcs_lib.basename)
+
+    wrapper = ctx.actions.declare_file(ctx.attr.name + "_vcs_compile.sh")
+
+    ctx.actions.expand_template(
+        template = ctx.file._template,
+        output = wrapper,
+        substitutions = {
+            "%{OUTDIR_NAME}%": outdir_name,
+            "%{VCS_OPTS}%": " ".join(vcs_opts),
+            "%{LOAD_ARG}%": load_arg,
+            "%{BUILD_ARGS}%": " ".join(expanded_build_args),
+            "%{INCLUDES}%": " ".join(includes_args),
+            "%{DEFINES}%": " ".join(defines_args),
+            "%{PARAMETERS}%": " ".join(parameters_args),
+            "%{HDL_TOPLEVEL}%": hdl_toplevel,
+            "%{SOURCES}%": " ".join(sources_args),
+            "%{OUTPUT_SIMV}%": output_simv.path,
+            "%{OUTPUT_DAIDIR}%": output_daidir.path,
+            "%{OUTPUT_VDB}%": output_vdb.path,
+            "%{VCS_LIB_DIR}%": vcs_lib.dirname,
+        },
+    )
+
+    inputs = verilog_files + ctx.files._vcs_libs + ctx.files.data + [wrapper]
+
+    ctx.actions.run_shell(
+        outputs = [output_simv, output_daidir, output_vdb],
+        inputs = depset(inputs),
+        command = "bash {}".format(wrapper.path),
+        mnemonic = "VcsCompile",
+        use_default_shell_env = True
+    )
+
+    return [
+        DefaultInfo(
+            files = depset([output_simv]),
+            runfiles = ctx.runfiles(files = [output_simv, output_daidir, output_vdb]),
+            executable = output_simv
+        )
+    ]
+
+vcs_cocotb_model = rule(
+    doc = """Builds a VCS model for cocotb.
+    """,
+    implementation = _vcs_cocotb_model_impl,
+    attrs = {
+        "verilog_sources": attr.label_list(providers = [VerilogInfo], allow_files = True),
+        "hdl_toplevel": attr.string(mandatory = True),
+        "build_args": attr.string_list(default = []),
+        "defines": attr.string_dict(default = {}),
+        "includes": attr.string_list(default = []),
+        "parameters": attr.string_dict(default = {}),
+        "data": attr.label_list(allow_files = True, default = []),
+        "_vcs_libs": attr.label(
+            default = "@coralnpu_pip_deps_cocotb//:cocotb_libs",
+            allow_files = True,
+        ),
+        "_template": attr.label(
+            default = "//rules:vcs_model_wrapper.sh.template",
+            allow_single_file = True,
+        ),
+    },
+    executable = True,
+)
+
 verilator_cocotb_model = rule(
     doc = """Builds a verilator model for cocotb.
 
@@ -258,7 +364,7 @@ verilator_cocotb_model = rule(
             cfg = "exec",
         ),
         "_cocotb_verilator_lib": attr.label(
-            default = "@coralnpu_pip_deps_cocotb//:verilator_libs",
+            default = "@coralnpu_pip_deps_cocotb//:cocotb_libs",
             allow_files = True,
         ),
         "_cocotb_verilator_cpp": attr.label(
@@ -399,6 +505,7 @@ def vcs_cocotb_test(
         deps = [],
         data = [],
         verilog_model_files = [],
+        model = None,
         **kwargs):
     """Runs a cocotb test with a vcs model.
 
@@ -452,6 +559,11 @@ def vcs_cocotb_test(
         build_args.extend(["-v", "../$(rootpath {})".format(f)])
     kwargs["build_args"] = build_args
 
+    if model:
+        kwargs["model"] = model
+        data = data + [model]
+        kwargs.pop("verilog_sources", None)
+
     cocotb_test(
         name = name,
         hdl_toplevel = hdl_toplevel,
@@ -474,6 +586,7 @@ def _vcs_cocotb_test_suite(
         tests_kwargs = {},
         add_ci_tags = True,
         name_fsdb_after_test = False,
+        model = None,
         **kwargs):
     """Runs a cocotb test with a vcs model.
 
@@ -496,6 +609,21 @@ def _vcs_cocotb_test_suite(
     hdl_toplevel = all_tests_kwargs.get("hdl_toplevel")
     if not hdl_toplevel:
         fail("hdl_toplevel must be specified in tests_kwargs")
+
+    if not model:
+        model = name + "_vcs_model"
+        vcs_cocotb_model(
+            name = model,
+            verilog_sources = verilog_sources,
+            hdl_toplevel = hdl_toplevel,
+            build_args = kwargs.get("build_args", []),
+            defines = kwargs.get("defines", {}),
+            includes = kwargs.get("includes", []),
+            parameters = kwargs.get("parameters", {}),
+            data = kwargs.get("data", []) + kwargs.get("verilog_model_files", []),
+            tags = ["manual"] + list(kwargs.get("tags", [])),
+        )
+        model = ":" + model
 
     if testcases:
         test_targets = []
@@ -528,6 +656,7 @@ def _vcs_cocotb_test_suite(
                 tags = tags,
                 test_args = clean_test_args,
                 verilog_sources = verilog_sources,
+                model = model,
                 **tc_tests_kwargs
             )
             test_targets.append(":{}_{}".format(name, tc))
@@ -550,6 +679,7 @@ def _vcs_cocotb_test_suite(
         name = name,
         tags = tags,
         verilog_sources = verilog_sources,
+        model = model,
         **meta_target_kwargs
     )
 

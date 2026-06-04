@@ -16,12 +16,41 @@
 
 load("@rules_hdl//verilog:providers.bzl", "VerilogInfo", "verilog_library")
 
+def collect_verilog_files(targets, files = None):
+    """Collects Verilog files transitively from targets and direct files.
+
+    Args:
+        targets: A target or list of targets.
+        files: A list of Files.
+
+    Returns:
+        A depset of Files.
+    """
+    if files == None:
+        files = []
+    if type(targets) != "list":
+        targets = [targets]
+
+    transitive_dags = []
+    for target in targets:
+        if VerilogInfo in target:
+            transitive_dags.append(target[VerilogInfo].dag)
+
+    transitive_srcs = depset([], transitive = transitive_dags)
+
+    flat_srcs = []
+    for verilog_info_struct in transitive_srcs.to_list():
+        for src in verilog_info_struct.srcs:
+            flat_srcs.append(src)
+
+    for f in files:
+        flat_srcs.append(f)
+
+    return depset(flat_srcs)
+
 def _verilog_zip_bundle_impl(ctx):
   # Gather all sources
-  all_srcs = []
-  for srcs in ctx.attr.lib[VerilogInfo].dag.to_list():
-    for f in srcs.srcs:
-      all_srcs.append(f)
+  all_srcs = collect_verilog_files(ctx.attr.lib).to_list()
 
   # Build up zip command
   zipper_args = ["cf", ctx.outputs.zip.path]

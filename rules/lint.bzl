@@ -15,18 +15,12 @@
 """VCStatic lint rules."""
 
 load("@rules_hdl//verilog:providers.bzl", "VerilogInfo")
-
-def _collect_verilog_files(dep):
-    transitive_srcs = depset([], transitive = [dep[VerilogInfo].dag])
-    all_srcs = [verilog_info_struct.srcs
-                for verilog_info_struct in transitive_srcs.to_list()]
-    all_files = [src for sub_tuple in all_srcs for src in sub_tuple]
-    return all_files
+load("@coralnpu_hw//rules:verilog.bzl", "collect_verilog_files")
 
 def _vcstatic_lint_impl(ctx):
     # Create f file
     f_file = ctx.actions.declare_file(ctx.attr.name + "_files.f")
-    verilog_files = _collect_verilog_files(ctx.attr.package)
+    verilog_files = collect_verilog_files(ctx.attr.package).to_list()
     f_file_content = ["+define+SIMULATION"]
     for f in verilog_files:
       f_file_content = f_file_content + [f.path]

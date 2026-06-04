@@ -36,9 +36,10 @@ filegroup(
     srcs = glob(["cocotb/share/lib/verilator/*.cpp"]),
 )
 filegroup(
-    name = "verilator_libs",
+    name = "cocotb_libs",
     srcs = glob(["cocotb/libs/*.so"]),
 )
+
 """.format(pypi_name = pypi_name, pypi_version = pypi_version, deps = deps)
 
 def install_deps():

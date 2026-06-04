@@ -136,6 +136,7 @@ def coralnpu_repos2():
             "@coralnpu_hw//third_party/rules_hdl:0010-Fix-ParseDict-to-handle-space-separated-lists.patch",
             "@coralnpu_hw//third_party/rules_hdl:0011-Support-location-expansion-in-build-args.patch",
             "@coralnpu_hw//third_party/rules_hdl:0012-Fix-runfiles-collection-for-direct-files.patch",
+            "@coralnpu_hw//third_party/rules_hdl:0013-Support-pre-compiled-VCS-models.patch",
         ],
         patch_args = ["-p1"],
     )

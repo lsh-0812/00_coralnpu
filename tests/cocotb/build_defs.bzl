@@ -55,6 +55,7 @@ VCS_BUILD_ARGS = [
     "-hsopt=ignoreasiccap",  # Added to speed up simulation.
     "-LDFLAGS",
     "-rdynamic",
+    "+vcs+lic+wait",
     "-CFLAGS",
     "-I../hdl/verilog",
     "../hdl/verilog/sram_backdoor.cc",
@@ -68,6 +69,7 @@ VCS_TEST_ARGS = [
     "+fsdb+struct",
     "-cm",
     "line+cond+tgl+branch+assert",
+    "+vcs+lic+wait",
 ]
 
 VCS_DEFINES = {

@@ -1,0 +1,117 @@
+From 1234567890abcdef Mon Sep 17 00:00:00 2001
+From: Alex Van Damme <atv@google.com>
+Date: Thu, 04 Jun 2026 10:33:43 -0700
+Subject: [PATCH] Support pre-compiled VCS models
+
+---
+ cocotb/cocotb.bzl        |  2 +-
+ cocotb/cocotb_wrapper.py | 68 +++++++++++++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 68 insertions(+), 2 deletions(-)
+
+--- a/cocotb/cocotb.bzl
++++ b/cocotb/cocotb.bzl
+@@ -165,7 +165,7 @@
+         waves_args +
+         seed_args +
+         test_module_args +
+-        (" --model {}".format(ctx.executable.model.short_path) if ctx.attr.sim_name == "verilator" else "" ) +
++        (" --model {}".format(ctx.executable.model.short_path) if ctx.attr.model else "" ) +
+         ("&& (cp -fr `pwd`/sim_build/simv.vdb $TEST_UNDECLARED_OUTPUTS_DIR || true)" if ctx.attr.sim_name == "vcs" else "")
+     )
+ 
+
+--- a/cocotb/cocotb_wrapper.py
++++ b/cocotb/cocotb_wrapper.py
+@@ -14,9 +14,12 @@
+ 
+ import argparse
+ import cocotb_tools
++import os
++import shutil
+ import sys
+ from cocotb_tools.runner import get_runner
+ from cocotb_tools.check_results import get_results
++from bazel_tools.tools.python.runfiles import runfiles
+ 
+ 
+ cocotb_build_flags = [
+@@ -196,9 +199,73 @@
+     cocotb_tools.runner.MAX_PARALLEL_BUILD_JOBS = 32
+     runner = get_runner(args.sim)
+ 
+-    if args.sim == "verilator":
+-        import os
+-        from bazel_tools.tools.python.runfiles import runfiles
++    if args.sim == "vcs" and args.model:
++        r = runfiles.Create()
++        runfiles_path = r.Rlocation(f"coralnpu_hw/{args.model}")
++        if not runfiles_path or not os.path.exists(runfiles_path):
++            runfiles_path = r.Rlocation(args.model)
++
++        if not runfiles_path or not os.path.exists(runfiles_path):
++            print(f"Error: Could not find VCS model in runfiles: {args.model}", file=sys.stderr)
++            sys.exit(1)
++
++        daidir_path = runfiles_path + ".daidir"
++
++        build_dir = build_flags.get('build_dir', 'sim_build')
++        os.makedirs(build_dir, exist_ok=True)
++
++        dest_simv = os.path.join(build_dir, 'simv')
++        dest_daidir = os.path.join(build_dir, 'simv.daidir')
++        dest_vdb = os.path.join(build_dir, 'simv.vdb')
++
++        if os.path.lexists(dest_simv):
++            os.remove(dest_simv)
++        if os.path.lexists(dest_daidir):
++            if os.path.islink(dest_daidir):
++                os.remove(dest_daidir)
++            else:
++                shutil.rmtree(dest_daidir)
++        if os.path.lexists(dest_vdb):
++            if os.path.islink(dest_vdb):
++                os.remove(dest_vdb)
++            else:
++                shutil.rmtree(dest_vdb)
++
++        os.symlink(runfiles_path, dest_simv)
++        if os.path.exists(daidir_path):
++            shutil.copytree(daidir_path, dest_daidir)
++            os.chmod(dest_daidir, 0o755)
++            for root, dirs, files in os.walk(dest_daidir):
++                for d in dirs:
++                    os.chmod(os.path.join(root, d), 0o755)
++                for f in files:
++                    os.chmod(os.path.join(root, f), 0o644)
++        else:
++            print(f"Warning: daidir not found at {daidir_path}", file=sys.stderr)
++
++        vdb_path = runfiles_path + ".vdb"
++        if os.path.exists(vdb_path):
++            shutil.copytree(vdb_path, dest_vdb)
++            os.chmod(dest_vdb, 0o755)
++            for root, dirs, files in os.walk(dest_vdb):
++                for d in dirs:
++                    os.chmod(os.path.join(root, d), 0o755)
++                for f in files:
++                    os.chmod(os.path.join(root, f), 0o644)
++
++        print(f"Using pre-compiled VCS model from {runfiles_path}")
++
++        vcs_lib_dir = r.Rlocation("coralnpu_hw/external/coralnpu_pip_deps_cocotb/cocotb/libs")
++        if not vcs_lib_dir:
++            vcs_lib_dir = r.Rlocation("external/coralnpu_pip_deps_cocotb/cocotb/libs")
++        if vcs_lib_dir:
++            os.environ['LD_LIBRARY_PATH'] = "{}:{}".format(vcs_lib_dir, os.environ.get("LD_LIBRARY_PATH", ""))
++
++        test_flags['test_args'] = test_flags.get('test_args', [])
++        if not any(arg.startswith("-cm_dir") for arg in test_flags['test_args']):
++            test_flags['test_args'].extend(["-cm_dir", os.path.abspath(build_dir)])
++
++    elif args.sim == "verilator":
+         r = runfiles.Create()
+         sim_build = os.path.dirname(r.Rlocation(f"coralnpu_hw/{args.model}"))
+         test_flags['build_dir'] = sim_build
+
+-- 
+2.50.0

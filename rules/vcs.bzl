@@ -15,16 +15,10 @@
 """Bazel functions for VCS."""
 
 load("@rules_hdl//verilog:providers.bzl", "VerilogInfo")
-
-def _collect_verilog_files(dep):
-    transitive_srcs = depset([], transitive = [dep[VerilogInfo].dag])
-    all_srcs = [verilog_info_struct.srcs
-                for verilog_info_struct in transitive_srcs.to_list()]
-    all_files = [src for sub_tuple in all_srcs for src in sub_tuple]
-    return all_files
+load("@coralnpu_hw//rules:verilog.bzl", "collect_verilog_files")
 
 def _vcs_testbench_test_impl(ctx):
-    all_files = _collect_verilog_files(ctx.attr.deps)
+    all_files = collect_verilog_files(ctx.attr.deps).to_list()
 
     vcs_binary_output = ctx.actions.declare_file(ctx.attr.module)
     vcs_daidir_output = ctx.actions.declare_directory(
@@ -82,10 +76,7 @@ def vcs_testbench_test(name, tags=[], **kwargs):
 
 
 def _vcs_binary_impl(ctx):
-    verilog_files = []
-    for dep in ctx.attr.verilog_deps:
-        verilog_files += _collect_verilog_files(dep)
-    verilog_files += ctx.files.verilog_srcs
+    verilog_files = collect_verilog_files(ctx.attr.verilog_deps, ctx.files.verilog_srcs).to_list()
 
     libs = []
     objects = []
