@@ -55,6 +55,7 @@ DENYLIST = [
     "//tests/cocotb/rvv/load_store:store_unit_masked",
     "//tests/cocotb/rvv/arithmetics:vmsge_vx_test",
     # MPACT needs update to canonical-NaN
+    "//tests/cocotb/rvv/arithmetics:rvv_fdiv_float_rdn_m1",
     "//tests/cocotb/rvv/arithmetics:rvv_fdiv_float_rmm_m1",
     "//tests/cocotb/rvv/arithmetics:rvv_fdiv_float_rne_m1",
     "//tests/cocotb/rvv/arithmetics:rvv_fdiv_float_rtz_m1",
@@ -64,6 +65,7 @@ DENYLIST = [
     "//tests/cocotb/rvv/arithmetics:vfdiv_vf_test_rne",
     "//tests/cocotb/rvv/arithmetics:vfdiv_vf_test_rtz",
     "//tests/cocotb/rvv/arithmetics:vfdiv_vf_test_rup",
+    "//tests/cocotb/rvv/arithmetics:vfrdiv_vf_test_rdn",
     "//tests/cocotb/rvv/arithmetics:vfrdiv_vf_test_rmm",
     "//tests/cocotb/rvv/arithmetics:vfrdiv_vf_test_rne",
     "//tests/cocotb/rvv/arithmetics:vfrdiv_vf_test_rtz",
