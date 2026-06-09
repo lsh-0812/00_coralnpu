@@ -23,6 +23,7 @@ VERILATOR_BUILD_ARGS = [
     "-Wno-LATCH",
     "-Wno-SIDEEFFECT",
     "-Wno-MULTIDRIVEN",
+    "-Wno-SPLITVAR",
     "-Wno-UNOPTFLAT",
     "-Wno-BLKANDNBLK",
     "-Wno-CASEX",
