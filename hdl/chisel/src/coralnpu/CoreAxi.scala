@@ -250,10 +250,12 @@ class CoreAxi(p: Parameters, coreModuleName: String) extends RawModule {
     io.axi_master.read.addr <> readAddrArb.io.out
 
     // Route read data back based on ID.
-    ebus2axi.io.axi.read.data.valid := io.axi_master.read.data.valid && io.axi_master.read.data.bits.id === 0.U
-    ebus2axi.io.axi.read.data.bits := io.axi_master.read.data.bits
-    ibus2axi.io.axi.data.valid := io.axi_master.read.data.valid && io.axi_master.read.data.bits.id === 1.U
-    ibus2axi.io.axi.data.bits := io.axi_master.read.data.bits
-    io.axi_master.read.data.ready := Mux(io.axi_master.read.data.bits.id === 1.U, ibus2axi.io.axi.data.ready, ebus2axi.io.axi.read.data.ready)
+    val readDataSkid = Queue(io.axi_master.read.data, 2)
+    readDataSkid.ready := Mux(readDataSkid.bits.id === 1.U, ibus2axi.io.axi.data.ready, ebus2axi.io.axi.read.data.ready)
+    ebus2axi.io.axi.read.data.valid := readDataSkid.valid && readDataSkid.bits.id === 0.U
+    ibus2axi.io.axi.data.valid := readDataSkid.valid && readDataSkid.bits.id === 1.U
+
+    ebus2axi.io.axi.read.data.bits := readDataSkid.bits
+    ibus2axi.io.axi.data.bits := readDataSkid.bits
   }
 }
