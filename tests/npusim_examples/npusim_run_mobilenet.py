@@ -25,10 +25,12 @@ def run_full_mobilenet():
     entry_point, symbol_map = npu_sim.get_elf_entry_and_symbol(elf_file, ['inference_status', 'inference_input', 'inference_output'])
     npu_sim.load_program(elf_file, entry_point)
 
+    # input data 
     if symbol_map.get('inference_input'):
         input_data = np.random.randint(-128, 127, size=(224 * 224 * 3,), dtype=np.int8)
         npu_sim.write_memory(symbol_map['inference_input'], input_data)
 
+    # begin run simulation
     print("Running simulation...", flush=True)
     npu_sim.run()
     npu_sim.wait()
