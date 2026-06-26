@@ -1,4 +1,4 @@
-# NPUSim MobileNet 教程
+# NPUSim MobileNet(AI模型) 教程
 
 本教程讲解 `npusim_run_mobilenet.py` 如何使用 CoralNPU 的 Python 仿真器绑定（bindings）来执行已编译的 C++ 二进制程序 `run_full_mobilenet_v1.cc`，以及二者如何交互的内部机理和机制。
 
@@ -6,11 +6,11 @@
 
 仿真一个像 MobileNet 这样的 TFLite Micro 模型通常需要两个组件：
 1. **主机端 Python 脚本（`npusim_run_mobilenet.py`）**：控制 NPU 仿真器、注入输入、运行仿真并提取输出。
-2. **设备端 C++ 二进制（`run_full_mobilenet_v1.cc`）**：该 C++ 代码搭建 TFLM 解释器以运行推理。使用 `coralnpu_v2_binary` Bazel 规则构建该 target，会将其打包成可在仿真的 CoralNPU 上运行的可执行文件。
+2. **设备端 C++ 二进制（`run_full_mobilenet_v1.cc`）**：该 C++ 代码**搭建 TFLM 解释器以运行推理**。使用 `coralnpu_v2_binary` Bazel 规则构建该 target，会将其打包成可在仿真的 CoralNPU 上运行的可执行文件。
 
 ## 1. C++ 设备端代码（`run_full_mobilenet_v1.cc`）
 
-C++ 代码负责实际的推理流水线。为了与 Python 主机通信，它将特定的内存缓冲区暴露为全局变量。
+C++ 代码负责实际的推理流水线。为了与 Python 主机通信，它**将特定的内存缓冲区暴露为全局变量**。
 
 ### 内存段与符号
 我们使用 GCC 的 `__attribute__` pragma，将全局数组放置在特定的内存段（`.data` 和 `.extdata`）中：
@@ -68,6 +68,8 @@ if symbol_map.get('inference_input'):
 ```
 这会直接覆写仿真器内存空间中 `inference_input` 指针处的字节。
 
+> TODO：为什么输入数据是随机数据？不应该是用来推理的数据吗
+
 ### 执行与提取
 ```python
 npu_sim.run()
@@ -89,9 +91,45 @@ if symbol_map.get('inference_output'):
 bazel run tests/npusim_examples:npusim_run_mobilenet
 ```
 
+![image-20260626104630886](npusim_mobilenet_tutorial_cn.assets/image-20260626104630886.png)
+
+
+
 ## 内部流程小结
+
 1. **编译（Compile）**：`run_full_mobilenet_v1.cc` 产生一个 `.elf` 文件，其中包含位于静态内存地址、未经改编的符号。
 2. **定位（Locate）**：Python 的 `npusim` 解析该 `.elf`，找到 `inference_input` 和 `inference_output` 的精确地址。
 3. **写入（Write）**：Python 将模拟的输入数据写入 `inference_input` 地址指针处。
 4. **运行（Run）**：Python 调用仿真器。C++ 代码将 `inference_input` 复制给模型、计算、再将结果复制到 `inference_output`。
 5. **读取（Read）**：仿真结束。Python 读取 `inference_output` 地址指针处的内容以验证结果。
+
+
+
+## 总结
+
+这个实际上，是单纯测试软件的方法。这边调用npusim是一个纯软件的模型，和自己的coral rtl模型无关。是为了快速验证AI算法的。 
+
+两大类:ISS(功能模型)vs RTL 仿真(硬件模型)
+
+|                    | **ISS(指令集模拟器)**                         | **RTL 仿真**                               |
+| :----------------- | :-------------------------------------------- | :----------------------------------------- |
+| 代表               | **npusim**(MPACT)                             | cocotb / 独立 Verilator / UVM              |
+| 模拟的是           | **指令的"行为"**(每条指令对寄存器/内存做什么) | **真实硬件**(门、寄存器、总线),逐周期      |
+| 有没有 RTL/Verilog | ❌ 没有,纯软件功能模型                         | ✅ 就是 Chisel→SV 那套真硬件                |
+| 回答的问题         | "我的**程序/模型**算得对不对?"                | "我的**硬件**行为对不对、几个周期?"        |
+| 速度               | **快**(整个 MobileNet 几秒)                   | **慢**(同样的 MobileNet 跑 RTL 可能几小时) |
+| 周期/时序信息      | ❌ 没有                                        | ✅ 有                                       |
+
+**一句话:ISS 像 NPU 的 QEMU**——它"懂"每条 CoralNPU 指令该干什么,但它不是硬件;RTL 仿真是"把芯片蓝图在软件里逐周期跑起来"。
+
+目前，该项目总共有以下验证方法：
+
+| 方式                   | 类别         | 目标 / 驱动                              | 你跑过吗              |
+| :--------------------- | :----------- | :--------------------------------------- | :-------------------- |
+| **npusim**(MPACT)      | ISS 功能模型 | `//tests/npusim_examples:...`(py_binary) | 正在看                |
+| **cocotb + Verilator** | RTL 仿真     | `//tests/cocotb/...`,Python testbench    | ✅(20/20、tutorial)    |
+| **独立 Verilator sim** | RTL 仿真     | `//tests/verilator_sim:...`,C++ 命令行   | ✅(semihosting printf) |
+| **UVM + VCS**          | RTL 仿真     | `tests/uvm/`,商业仿真器                  | ❌(没 VCS)             |
+
+1. **ISS(npusim)用于软件侧**：开发/调试你的 **ML 模型和程序**、统计指令数、快速验证算法对不对。RTL 太慢,你不会拿它跑整个 MobileNet,但 ISS 几秒就跑完。
+2. **RTL 仿真用于硬件侧**：验证你将来要综合/流片的**真实硬件**有没有 bug。

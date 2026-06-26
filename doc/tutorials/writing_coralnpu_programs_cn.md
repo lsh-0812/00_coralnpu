@@ -29,8 +29,8 @@ int main(int argc, char** argv) {
 一个典型的 CoralNPU 程序结构包括：
 
 1) 输入缓冲区，用于存放你想执行的计算的输入。
-   在本教程中，我们假设主机核（host core）会在程序执行前把数据写入 CoralNPU 的 DTCM。
-2) 输出缓冲区，供 CoralNPU 存放计算结果。与输入缓冲区类似，我们假设 CoralNPU 会写入其 DTCM 中的某个位置，供主处理器在程序完成后读取。
+   在本教程中，我们假设**主机核（host core）会在程序执行前把数据写入 CoralNPU 的 DTCM。**
+2) 输出缓冲区，供 CoralNPU 存放计算结果。与输入缓冲区类似，我们假设 **CoralNPU 会写入其 DTCM 中的某个位置，供主处理器在程序完成后读取**。
 3) 要执行的实际计算。
 
 ### 定义输入和输出缓冲区
@@ -51,7 +51,9 @@ int main(int argc, char** argv) {
 }
 ```
 
-在本教程中，我们不需要定义这些缓冲区的精确位置。我们的链接脚本会把它们分配在 DTCM 中，并在测试台中查询它们的位置。
+在本教程中，**我们不需要定义这些缓冲区的精确位置**。我们的链接脚本会把它们分配在 DTCM 中，并在测试台中查询它们的位置。
+
+> 因为后续cocotb中会有办法得到`input1_buffer`的地址。
 
 ### 定义计算
 
@@ -100,6 +102,9 @@ async def core_mini_axi_tutorial(dut):
 async def core_mini_axi_tutorial(dut):
     """Testbench to run your CoralNPU program."""
     # Test bench setup
+    # 先等待init（门控？）
+    # 之后等待复位接收
+    # 最后设置运行开始地址？
     core_mini_axi = CoreMiniAxiInterface(dut)
     await core_mini_axi.init()
     await core_mini_axi.reset()
@@ -216,6 +221,26 @@ I got [8994 8995 8996 8997 8998 8999 9000 9001]
 ```
 
 恭喜你运行了第一个程序！
+
+
+
+![image-20260625155731792](writing_coralnpu_programs_cn.assets/image-20260625155731792.png)
+
+TODO：跑的程序是哪一个硬件
+
+> 解释如下：其实是根据硬件scala编译生成的产物来跑cocotb的。
+
+完整链条:**`.scala`(Chisel 源码)→[firtool 生成]→ `CoreMiniAxi.sv` →[Verilator]→ C++ 模型 →[g++ 编译链接]→ cocotb 加载的 DUT**。每一环都是一个 Bazel action,**全部从仓库源码推导出来**,没有任何"预存的硬件 blob"——连那个 `.sv` 都是现生成的(不在源码树里**,在缓存里**)。
+
+| 情况                                       | 行为                                                         |
+| :----------------------------------------- | :----------------------------------------------------------- |
+| 第一次构建                                 | 从 `.scala` 一路现编(Verilate+g++ 慢,几分钟)                 |
+| 源码/配置**没变**再跑                      | **命中缓存,直接复用**,不重编(你看到的 `action cache hit`)    |
+| 改了 `.scala` / 改了 itcm 大小 / 改了 flag | 输入哈希变 → **自动只重建受影响的部分**(重新生成 SV、重新 Verilate) |
+
+**硬件永远是从本仓库源码现编的**(Chisel→SV→Verilator),Bazel 的持久缓存让它"没变就不重编"。当我们改一行 `.scala` 重跑,就能立刻在仿真里看到新硬件的效果。
+
+
 
 ## 后续步骤
 
