@@ -50,6 +50,7 @@ async def core_mini_axi_tutorial(dut):
     await core_mini_axi.write(inputs2_addr, input2_data)
     rinput1 = (await core_mini_axi.read(inputs1_addr, 4 * 8)).view(np.float32)
     rinput2 = (await core_mini_axi.read(inputs2_addr, 4 * 8)).view(np.float32)
+    print(f"\n\n\n\n\n")
     print(f"Reading input1 values : {rinput1}")
     print(f"Reading input2 values : {rinput2}")
 

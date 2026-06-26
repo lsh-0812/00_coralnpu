@@ -26,3 +26,11 @@ coralnpu_v2_binary(
     srcs = ["rvv_add_intrinsic.cc"],
 )
 
+coralnpu_v2_binary(
+    name = "hello_world_printf",
+    srcs = ["hello_world_printf.cc"],
+    semihosting = True,          # 走 HTIF,printf 才有去处
+    itcm_size_kbytes = 1024,     # 跟 highmem 硬件对齐
+    dtcm_size_kbytes = 1024,
+    linkopts = ["-u", "_printf_float"],   # ← 加这一行
+)
